@@ -1,0 +1,16 @@
+[package]
+name = "qsimulator"
+version = "0.1.0"
+edition = "2021"
+description = "A quantum circuit simulator"
+license = "MIT"
+repository = "https://github.com/samhithak13/qsimulator"
+readme = "README.md"
+keywords = ["quantum", "simulator", "quantum-computing", "circuit"]
+categories = ["science", "simulation"]
+
+[dependencies]
+num-complex = "0.4"
+
+[dev-dependencies]
+approx = "0.5"

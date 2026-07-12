@@ -1,0 +1,12 @@
+# Rust build artifacts
+/target
+**/*.rs.bk
+
+# Cargo lock is kept for binaries; remove next line if publishing a library only
+# Cargo.lock
+
+# Editor / OS
+.DS_Store
+*.swp
+.idea/
+.vscode/

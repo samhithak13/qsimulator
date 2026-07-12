@@ -1,0 +1,77 @@
+# qsimulator
+
+A **quantum circuit simulator** written in Rust.
+
+`qsimulator` models an ideal (noiseless) quantum computer by maintaining
+the full state vector of an *n*-qubit register and applying unitary gate
+operations to it. It is intended as a clear, well-tested foundation for
+experimenting with quantum algorithms and for learning how state-vector
+simulation works under the hood.
+
+## Scope & goals
+
+- **State-vector simulation** of up to ~20–25 qubits on a typical laptop
+  (memory grows as `2^n` complex amplitudes).
+- A small, readable **gate set**: X, Y, Z, H, S, T, plus controlled gates
+  (CNOT) and arbitrary single-qubit unitaries.
+- A **circuit builder** API for composing gates into programs.
+- **Measurement**     }
+
+computational basis with correct Born-rule
+  probabilities and post-measurement collapse.
+- Correctness first: every gate and circuit primitive is covered by tests.
+
+### Non-goals (for now)
+
+- Noise / density-matrix simulation.
+- GPU acceleration or distributed simulation.
+- A hardware backend or transpiler.
+
+These may be revisited once  }
+
+core is stable — see the tracking issue.
+
+## Project layout
+
+```
+qsimulator/
+├── src/            # Library + CLI source
+│   ├── lib.rs      # Crate root, re-exports
+│   ├── state.rs    # State vector representation
+│   ├── gates.rs    # Gate definitions (unitary matrices)
+│   ├── circuit.rs  # Circuit builder & execution
+│   └── main.rs     # Small demo CLI (Bell state)
+├── tests/          # Integration tests
+├── docs/           # Design notes & documentation
+└── .github/        # CI workflows
+```
+
+## Quick start
+
+```bash
+# Run the demo (prepares and measures a Bell state)
+cargo run
+
+# Run the test suite
+cargo test
+```
+
+## Roadmap
+
+Milestones are tracked in the repository issues. High level:
+
+1. **v0.1 — Core** (this scaffold): state vector, single-qubit gates,
+   CNOT, measurement, circuit builder.
+2. **v0.2 — Ergonomics**: more gates (rotations, SWAP, Toffoli), circuit
+   diagram printing, richer CLI.
+3. **v0.3 — Performance**: in-place gate application, sparse fast paths,
+   benchmarks.
+
+## Contributing
+
+Contributions welcome. Please keep new gates/primitives covered by tests
+and run `cargo fmt` + `cargo clippy` before opening a PR.
+
+## License
+
+Licensed under the [MIT License](./LICENSE).
