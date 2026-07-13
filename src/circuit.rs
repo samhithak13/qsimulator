@@ -60,6 +60,33 @@ impl Circuit {
         self
     }
 
+    /// Rotation about the X axis by `theta` on `target`.
+    pub fn rx(&mut self, theta: f64, target: usize) -> &mut Self {
+        self.ops.push(Op::Single {
+            gate: gates::rx(theta),
+            target,
+        });
+        self
+    }
+
+    /// Rotation about the Y axis by `theta` on `target`.
+    pub fn ry(&mut self, theta: f64, target: usize) -> &mut Self {
+        self.ops.push(Op::Single {
+            gate: gates::ry(theta),
+            target,
+        });
+        self
+    }
+
+    /// Rotation about the Z axis by `theta` on `target`.
+    pub fn rz(&mut self, theta: f64, target: usize) -> &mut Self {
+        self.ops.push(Op::Single {
+            gate: gates::rz(theta),
+            target,
+        });
+        self
+    }
+
     /// Controlled-NOT: flips `target` when `control` is |1>.
     pub fn cnot(&mut self, control: usize, target: usize) -> &mut Self {
         self.ops.push(Op::Controlled {
