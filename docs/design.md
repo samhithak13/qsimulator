@@ -15,6 +15,10 @@ application a stride-`2^q` butterfly over amplitude pairs.
   control bit is set (`state.apply_controlled_1q`).
 - **SWAP** (`state.swap_qubits`) exchanges two qubits by swapping the
   amplitudes of basis states that differ only in those two bits.
+- **Multi-controlled gates** (`state.apply_multi_controlled_1q`) apply a
+  2x2 unitary only where *every* control bit is set. Zero controls give an
+  unconditional gate, one control matches `apply_controlled_1q`, and two
+  controls with X give a Toffoli (`circuit.toffoli`).
 
 Both are done in place, so memory is a single `2^n` vector.
 
