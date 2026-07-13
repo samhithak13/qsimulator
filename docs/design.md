@@ -64,7 +64,7 @@ extra context. Update it as features land.
 ### What works today
 
 Everything below is implemented, tested, and pushed to `main`. CI (fmt +
-clippy `-D warnings` + build + test) is green. **28 tests** across 7 test
+clippy `-D warnings` + build + test) is green. **43 tests** across 9 test
 binaries.
 
 | Area | API | Status |
@@ -78,7 +78,8 @@ binaries.
 | Measurement | `State::{prob_qubit_one, measure_qubit, measure_all}` | ✅ |
 | Sampling | `Circuit::sample(shots, seed) -> HashMap<usize, usize>` | ✅ |
 | RNG | `rng::Rng` (seedable xorshift64, SplitMix64 seeding) | ✅ |
-| Circuit builders | `h, x, z, rx, ry, rz, cnot, swap, toffoli` | ✅ |
+| Circuit builders | `h, x, y, z, s, t, rx, ry, rz, cnot, cz, cu, swap, toffoli, mcx, mcu` | ✅ |
+| Circuit display | `Display for Circuit` (ASCII wire diagram) | ✅ |
 
 ### File map
 
@@ -90,8 +91,8 @@ binaries.
 - `src/rng.rs` — the RNG and its unit tests.
 - `src/lib.rs` — module wiring and re-exports (`Circuit`, `State`, `Rng`).
 - `src/main.rs` — demo: builds a Bell state and samples 1000 shots.
-- `tests/` — `bell_state.rs`, `measurement.rs`, `rotations.rs`, `swap.rs`,
-  `toffoli.rs`.
+- `tests/` — `bell_state.rs`, `builders.rs`, `ghz.rs`, `measurement.rs`,
+  `rotations.rs`, `swap.rs`, `toffoli.rs`.
 
 ### Frozen conventions (do not change silently)
 
@@ -119,24 +120,25 @@ cargo run            # the Bell-state sampling demo
 New functionality must land with its test in the same commit, and all four
 checks above must pass before committing.
 
-### Suggested next steps (v0.2 → v0.3, not yet started)
+### Completed next steps (v0.2)
+
+1. ~~**More builder coverage**~~ — ✅ `y`, `s`, `t`, `cz`, `cu` added with
+   tests (12 new tests in `tests/builders.rs`).
+2. ~~**Arbitrary controlled-U builder**~~ — ✅ `mcx(controls, target)` and
+   `mcu(gate, controls, target)` added with tests (0, 1, and 3 controls).
+3. ~~**Circuit inspection / diagram printing**~~ — ✅ `Display for Circuit`
+   prints an ASCII wire diagram with gate labels, control dots (`●`), swap
+   markers (`×`), and vertical links (`│`). Demo output in `main.rs`.
+5. ~~**GHZ + multi-qubit fixtures**~~ — ✅ 3-qubit and 4-qubit GHZ tests
+   in `tests/ghz.rs` (probabilities + sampling).
+
+### Suggested next steps (v0.3, not yet started)
 
 Roughly in priority order; none of these exist yet:
 
-1. **More builder coverage** — expose `y`, `s`, `t`, and a controlled-Z /
-   controlled-U builder on `Circuit` (the gate matrices already exist;
-   `apply_controlled_1q` already handles arbitrary 2x2). Small, high-value.
-2. **Arbitrary controlled-U builder** — generalize `toffoli` into
-   `mcu(gate, controls, target)` / `mcx(controls, target)` on `Circuit`;
-   the state-level `apply_multi_controlled_1q` already supports any control
-   count, so this is just a builder + `Op` pass-through + tests.
-3. **Circuit inspection / diagram printing** — a `Display` or ASCII diagram
-   for `Circuit` (README roadmap item under v0.2 "circuit diagram printing").
 4. **Richer CLI** (`main.rs`) — accept a gate list / simple program instead
    of the hard-coded Bell demo.
-5. **GHZ + multi-qubit fixtures** — the testing-strategy section mentions
-   GHZ; add an explicit GHZ prep + sampling test.
-6. **Performance (v0.3)** — in-place kernels already; consider benchmarks
+6. **Performance** — in-place kernels already; consider benchmarks
    and a sparse fast path only after the above.
 
 When adding a gate: add the matrix in `gates.rs`, a builder in `circuit.rs`

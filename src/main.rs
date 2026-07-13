@@ -6,6 +6,11 @@ use qsimulator::Circuit;
 fn main() {
     let mut circuit = Circuit::new(2);
     circuit.h(0).cnot(0, 1);
+
+    println!("Circuit:");
+    print!("{circuit}");
+    println!();
+
     let state = circuit.run();
 
     println!("Bell state amplitudes:");
