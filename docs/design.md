@@ -16,6 +16,11 @@ application a stride-`2^q` butterfly over amplitude pairs.
 
 Both are done in place, so memory is a single `2^n` vector.
 
+The gate set covers the Paulis (X, Y, Z), Hadamard, the phase gates S and
+T, and the continuous rotations `rx(θ)`, `ry(θ)`, `rz(θ)`. Each rotation is
+the standard `exp(-i·θ/2·P)` for its Pauli `P`, so e.g. `rx(π)` equals X up
+to the global phase `-i`.
+
 ## Measurement
 
 Sampling a computational-basis outcome uses the Born rule:
