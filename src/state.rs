@@ -77,6 +77,29 @@ impl State {
         }
     }
 
+    /// Exchange the states of qubits `a` and `b`.
+    ///
+    /// Implemented by swapping the amplitudes of every basis-state pair that
+    /// differs only in these two bits (i.e. |..1..0..> <-> |..0..1..>). Each
+    /// pair is touched exactly once.
+    pub fn swap_qubits(&mut self, a: usize, b: usize) {
+        assert!(a < self.n_qubits, "qubit a out of range");
+        assert!(b < self.n_qubits, "qubit b out of range");
+        if a == b {
+            return;
+        }
+        let amask = 1usize << a;
+        let bmask = 1usize << b;
+        for i in 0..self.amps.len() {
+            // Act once per pair: pick the index with bit a set and bit b clear,
+            // then swap it with its partner (bit a clear, bit b set).
+            if (i & amask) != 0 && (i & bmask) == 0 {
+                let j = (i & !amask) | bmask;
+                self.amps.swap(i, j);
+            }
+        }
+    }
+
     /// Total probability (should stay ~1.0). Useful for sanity checks/tests.
     pub fn norm(&self) -> f64 {
         self.amps.iter().map(|c| c.norm_sqr()).sum()

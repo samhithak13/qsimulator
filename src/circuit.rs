@@ -19,6 +19,10 @@ enum Op {
         control: usize,
         target: usize,
     },
+    Swap {
+        a: usize,
+        b: usize,
+    },
 }
 
 /// A quantum circuit: an ordered list of gate operations on `n_qubits`.
@@ -97,6 +101,12 @@ impl Circuit {
         self
     }
 
+    /// SWAP: exchange the states of qubits `a` and `b`.
+    pub fn swap(&mut self, a: usize, b: usize) -> &mut Self {
+        self.ops.push(Op::Swap { a, b });
+        self
+    }
+
     /// Run the circuit starting from |0...0> and return the final state.
     pub fn run(&self) -> State {
         let mut state = State::new(self.n_qubits);
@@ -108,6 +118,7 @@ impl Circuit {
                     control,
                     target,
                 } => state.apply_controlled_1q(gate, *control, *target),
+                Op::Swap { a, b } => state.swap_qubits(*a, *b),
             }
         }
         state

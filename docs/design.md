@@ -13,6 +13,8 @@ application a stride-`2^q` butterfly over amplitude pairs.
   that differ only in the target bit (`state.apply_1q`).
 - **Controlled gates** apply the 2x2 unitary only to pairs where the
   control bit is set (`state.apply_controlled_1q`).
+- **SWAP** (`state.swap_qubits`) exchanges two qubits by swapping the
+  amplitudes of basis states that differ only in those two bits.
 
 Both are done in place, so memory is a single `2^n` vector.
 
