@@ -15,10 +15,8 @@ simulation works under the hood.
 - A small, readable **gate set**: X, Y, Z, H, S, T, plus controlled gates
   (CNOT) and arbitrary single-qubit unitaries.
 - A **circuit builder** API for composing gates into programs.
-- **Measurement**     }
-
-computational basis with correct Born-rule
-  probabilities and post-measurement collapse.
+- **Measurement** in the computational basis with correct Born-rule
+  probabilities, post-measurement collapse, and seedable sampling.
 - Correctness first: every gate and circuit primitive is covered by tests.
 
 ### Non-goals (for now)
@@ -27,9 +25,7 @@ computational basis with correct Born-rule
 - GPU acceleration or distributed simulation.
 - A hardware backend or transpiler.
 
-These may be revisited once  }
-
-core is stable — see the tracking issue.
+These may be revisited once the core is stable — see the tracking issue.
 
 ## Project layout
 
@@ -61,7 +57,8 @@ cargo test
 Milestones are tracked in the repository issues. High level:
 
 1. **v0.1 — Core** (this scaffold): state vector, single-qubit gates,
-   CNOT, measurement, circuit builder.
+   CNOT, measurement, circuit builder.  ✅ measurement done (seedable
+   sampling, single-qubit + full-register collapse).
 2. **v0.2 — Ergonomics**: more gates (rotations, SWAP, Toffoli), circuit
    diagram printing, richer CLI.
 3. **v0.3 — Performance**: in-place gate application, sparse fast paths,
