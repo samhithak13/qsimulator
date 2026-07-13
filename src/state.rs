@@ -77,6 +77,38 @@ impl State {
         }
     }
 
+    /// Apply a single-qubit `gate` to `target`, but only on basis states
+    /// where **every** qubit in `controls` is |1>.
+    ///
+    /// This generalizes [`apply_controlled_1q`](Self::apply_controlled_1q) to
+    /// any number of controls: zero controls degenerate to an unconditional
+    /// gate, one control reproduces `apply_controlled_1q`, and two controls
+    /// with an X gate give a Toffoli. Controls must be distinct from `target`.
+    pub fn apply_multi_controlled_1q(
+        &mut self,
+        gate: &[[Complex64; 2]; 2],
+        controls: &[usize],
+        target: usize,
+    ) {
+        assert!(target < self.n_qubits, "target qubit out of range");
+        let mut cmask = 0usize;
+        for &ctrl in controls {
+            assert!(ctrl < self.n_qubits, "control qubit out of range");
+            assert_ne!(ctrl, target, "control and target must differ");
+            cmask |= 1usize << ctrl;
+        }
+        let tstep = 1usize << target;
+        for j in 0..self.amps.len() {
+            // Act once per pair (target bit 0) and only when all controls set.
+            if (j & tstep) == 0 && (j & cmask) == cmask {
+                let a = self.amps[j];
+                let b = self.amps[j + tstep];
+                self.amps[j] = gate[0][0] * a + gate[0][1] * b;
+                self.amps[j + tstep] = gate[1][0] * a + gate[1][1] * b;
+            }
+        }
+    }
+
     /// Exchange the states of qubits `a` and `b`.
     ///
     /// Implemented by swapping the amplitudes of every basis-state pair that

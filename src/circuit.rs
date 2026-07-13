@@ -23,6 +23,11 @@ enum Op {
         a: usize,
         b: usize,
     },
+    MultiControlled {
+        gate: Gate,
+        controls: Vec<usize>,
+        target: usize,
+    },
 }
 
 /// A quantum circuit: an ordered list of gate operations on `n_qubits`.
@@ -107,6 +112,17 @@ impl Circuit {
         self
     }
 
+    /// Toffoli (CCNOT): flip `target` only when both `control1` and
+    /// `control2` are |1>.
+    pub fn toffoli(&mut self, control1: usize, control2: usize, target: usize) -> &mut Self {
+        self.ops.push(Op::MultiControlled {
+            gate: gates::x(),
+            controls: vec![control1, control2],
+            target,
+        });
+        self
+    }
+
     /// Run the circuit starting from |0...0> and return the final state.
     pub fn run(&self) -> State {
         let mut state = State::new(self.n_qubits);
@@ -119,6 +135,11 @@ impl Circuit {
                     target,
                 } => state.apply_controlled_1q(gate, *control, *target),
                 Op::Swap { a, b } => state.swap_qubits(*a, *b),
+                Op::MultiControlled {
+                    gate,
+                    controls,
+                    target,
+                } => state.apply_multi_controlled_1q(gate, controls, *target),
             }
         }
         state

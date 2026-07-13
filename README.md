@@ -12,8 +12,9 @@ simulation works under the hood.
 
 - **State-vector simulation** of up to ~20–25 qubits on a typical laptop
   (memory grows as `2^n` complex amplitudes).
-- A small, readable **gate set**: X, Y, Z, H, S, T, plus controlled gates
-  (CNOT) and arbitrary single-qubit unitaries.
+- A small, readable **gate set**: X, Y, Z, H, S, T, the rotations Rx/Ry/Rz,
+  SWAP, plus controlled gates (CNOT, Toffoli) and arbitrary single-qubit
+  unitaries.
 - A **circuit builder** API for composing gates into programs.
 - **Measurement** in the computational basis with correct Born-rule
   probabilities, post-measurement collapse, and seedable sampling.
@@ -59,7 +60,7 @@ Milestones are tracked in the repository issues. High level:
 1. **v0.1 — Core** (this scaffold): state vector, single-qubit gates,
    CNOT, measurement, circuit builder.  ✅ measurement done (seedable
    sampling, single-qubit + full-register collapse).
-2. **v0.2 — Ergonomics**: more gates (rotations, SWAP, Toffoli), circuit
+2. **v0.2 — Ergonomics**: more gates (rotations, SWAP, Toffoli ✅), circuit
    diagram printing, richer CLI.
 3. **v0.3 — Performance**: in-place gate application, sparse fast paths,
    benchmarks.
