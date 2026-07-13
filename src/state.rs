@@ -1,5 +1,6 @@
 //! State-vector representation of an n-qubit register.
 
+use crate::rng::Rng;
 use num_complex::Complex64;
 
 /// The full state vector of an `n`-qubit quantum register.
@@ -79,5 +80,87 @@ impl State {
     /// Total probability (should stay ~1.0). Useful for sanity checks/tests.
     pub fn norm(&self) -> f64 {
         self.amps.iter().map(|c| c.norm_sqr()).sum()
+    }
+
+    /// Probability that qubit `q` is measured in the |1> state.
+    ///
+    /// This is the sum of `|amplitude|^2` over every basis state whose
+    /// bit `q` is set. Does not modify the state.
+    pub fn prob_qubit_one(&self, q: usize) -> f64 {
+        assert!(q < self.n_qubits, "qubit out of range");
+        let mask = 1usize << q;
+        self.amps
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| (i & mask) != 0)
+            .map(|(_, a)| a.norm_sqr())
+            .sum()
+    }
+
+    /// Measure qubit `q` in the computational basis.
+    ///
+    /// Samples an outcome (`true` = |1>, `false` = |0>) via the Born rule,
+    /// then collapses the state onto the measured subspace and renormalizes
+    /// so the surviving amplitudes again sum to probability 1.
+    pub fn measure_qubit(&mut self, q: usize, rng: &mut Rng) -> bool {
+        assert!(q < self.n_qubits, "qubit out of range");
+        let mask = 1usize << q;
+        let p1 = self.prob_qubit_one(q);
+        let outcome = rng.next_f64() < p1;
+
+        // Probability mass of the branch we are keeping.
+        let branch_prob = if outcome { p1 } else { 1.0 - p1 };
+        // Guard against dividing by zero if the branch has (numerically) no
+        // amplitude; in that case the surviving amplitudes are all zero anyway.
+        let inv_norm = if branch_prob > 0.0 {
+            1.0 / branch_prob.sqrt()
+        } else {
+            0.0
+        };
+
+        for (i, a) in self.amps.iter_mut().enumerate() {
+            let bit_set = (i & mask) != 0;
+            if bit_set == outcome {
+                *a *= inv_norm;
+            } else {
+                *a = Complex64::new(0.0, 0.0);
+            }
+        }
+        outcome
+    }
+
+    /// Measure every qubit at once, returning the sampled basis-state index.
+    ///
+    /// The outcome is drawn from the full Born-rule distribution
+    /// `p(i) = |amplitude(i)|^2` and the state collapses onto that single
+    /// basis state. The returned `usize` is little-endian: bit `q` is the
+    /// measured value of qubit `q`.
+    pub fn measure_all(&mut self, rng: &mut Rng) -> usize {
+        let r = rng.next_f64();
+        let mut cumulative = 0.0;
+        // Default to the last basis state carrying nonzero amplitude. This
+        // guards the edge case where floating-point roundoff leaves the
+        // cumulative sum just shy of `r`.
+        let mut outcome = 0;
+        for (i, a) in self.amps.iter().enumerate() {
+            let p = a.norm_sqr();
+            if p > 0.0 {
+                outcome = i;
+            }
+            cumulative += p;
+            if r < cumulative {
+                outcome = i;
+                break;
+            }
+        }
+
+        for (i, a) in self.amps.iter_mut().enumerate() {
+            *a = if i == outcome {
+                Complex64::new(1.0, 0.0)
+            } else {
+                Complex64::new(0.0, 0.0)
+            };
+        }
+        outcome
     }
 }

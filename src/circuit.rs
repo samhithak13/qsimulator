@@ -1,8 +1,10 @@
 //! Circuit builder and executor.
 
 use crate::gates;
+use crate::rng::Rng;
 use crate::state::State;
 use num_complex::Complex64;
+use std::collections::HashMap;
 
 type Gate = [[Complex64; 2]; 2];
 
@@ -82,5 +84,23 @@ impl Circuit {
             }
         }
         state
+    }
+
+    /// Run the circuit `shots` times and return a histogram of measured
+    /// basis-state outcomes.
+    ///
+    /// The circuit is executed once, then each shot measures a fresh clone of
+    /// the resulting state so the shots are independent. `seed` makes the
+    /// whole sampling run deterministic and reproducible. Keys of the returned
+    /// map are little-endian basis-state indices; values are counts.
+    pub fn sample(&self, shots: usize, seed: u64) -> HashMap<usize, usize> {
+        let final_state = self.run();
+        let mut rng = Rng::new(seed);
+        let mut histogram = HashMap::new();
+        for _ in 0..shots {
+            let outcome = final_state.clone().measure_all(&mut rng);
+            *histogram.entry(outcome).or_insert(0) += 1;
+        }
+        histogram
     }
 }
