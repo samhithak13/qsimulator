@@ -13,8 +13,8 @@ simulation works under the hood.
 - **State-vector simulation** of up to ~20–25 qubits on a typical laptop
   (memory grows as `2^n` complex amplitudes).
 - A small, readable **gate set**: X, Y, Z, H, S, T, the rotations Rx/Ry/Rz,
-  SWAP, plus controlled gates (CNOT, Toffoli) and arbitrary single-qubit
-  unitaries.
+  SWAP, plus controlled gates (CNOT, CZ, Toffoli) and arbitrary controlled
+  unitaries with any number of controls (`cu`, `mcx`, `mcu`).
 - A **circuit builder** API for composing gates into programs.
 - **Measurement** in the computational basis with correct Born-rule
   probabilities, post-measurement collapse, and seedable sampling.
