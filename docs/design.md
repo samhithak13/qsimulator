@@ -63,9 +63,8 @@ extra context. Update it as features land.
 
 ### What works today
 
-Everything below is implemented, tested, and pushed to `main`. CI (fmt +
-clippy `-D warnings` + build + test) is green. **28 tests** across 7 test
-binaries.
+Everything below is implemented and tested. CI (fmt + clippy `-D warnings`
++ build + test) is green. **42 tests** across 8 test binaries.
 
 | Area | API | Status |
 |---|---|---|
@@ -79,6 +78,7 @@ binaries.
 | Sampling | `Circuit::sample(shots, seed) -> HashMap<usize, usize>` | ✅ |
 | RNG | `rng::Rng` (seedable xorshift64, SplitMix64 seeding) | ✅ |
 | Circuit builders | `h, x, z, rx, ry, rz, cnot, swap, toffoli` | ✅ |
+| CLI program format | `program::parse(&str) -> Result<Program, String>` + `main.rs` | ✅ |
 
 ### File map
 
@@ -88,10 +88,14 @@ binaries.
 - `src/circuit.rs` — `Op` enum (`Single`, `Controlled`, `Swap`,
   `MultiControlled`), the `Circuit` builder, `run`, and `sample`.
 - `src/rng.rs` — the RNG and its unit tests.
+- `src/program.rs` — the text program parser (`parse -> Program`) and its
+  unit tests. Supports the currently-exposed builders only (see below).
 - `src/lib.rs` — module wiring and re-exports (`Circuit`, `State`, `Rng`).
-- `src/main.rs` — demo: builds a Bell state and samples 1000 shots.
-- `tests/` — `bell_state.rs`, `measurement.rs`, `rotations.rs`, `swap.rs`,
-  `toffoli.rs`.
+- `src/main.rs` — CLI: runs a program file, stdin (`-`), or (no args) the
+  Bell-state demo. `--help` prints the grammar.
+- `examples/` — sample `.qsim` program files (`ghz.qsim`).
+- `tests/` — `bell_state.rs`, `measurement.rs`, `program.rs`, `rotations.rs`,
+  `swap.rs`, `toffoli.rs`.
 
 ### Frozen conventions (do not change silently)
 
@@ -113,31 +117,44 @@ cargo fmt --all -- --check
 cargo clippy --all-targets -- -D warnings
 cargo build
 cargo test
-cargo run            # the Bell-state sampling demo
+cargo run                      # the Bell-state sampling demo
+cargo run -- examples/ghz.qsim # run a program file
+cargo run -- --help            # the program grammar
 ```
 
 New functionality must land with its test in the same commit, and all four
 checks above must pass before committing.
 
-### Suggested next steps (v0.2 → v0.3, not yet started)
+### Recently done
 
-Roughly in priority order; none of these exist yet:
+- **Richer CLI (next step #4)** — `src/program.rs` parses a line-based text
+  program (`qubits N`, gate instructions, `sample <shots> [seed]`, `#`
+  comments, `pi`-expression angles) into a `Program { circuit, shots, seed }`.
+  `main.rs` runs a program file, stdin (`-`), or the Bell demo, with
+  `--help`. Ships `examples/ghz.qsim` and `tests/program.rs`. This also
+  covers the GHZ fixture from old step #5 (GHZ is the shipped example/test).
+
+### Suggested next steps (v0.2 → v0.3)
+
+Roughly in priority order:
 
 1. **More builder coverage** — expose `y`, `s`, `t`, and a controlled-Z /
-   controlled-U builder on `Circuit` (the gate matrices already exist;
-   `apply_controlled_1q` already handles arbitrary 2x2). Small, high-value.
+   controlled-U builder on `Circuit`. *(In flight in open PRs #2/#3 — check
+   before duplicating.)* Once merged, extend the `program.rs` parser to
+   accept `y`/`s`/`t`/`cz`/`cu`/`mcx`/`mcu` too (trivial once the builders
+   land).
 2. **Arbitrary controlled-U builder** — generalize `toffoli` into
-   `mcu(gate, controls, target)` / `mcx(controls, target)` on `Circuit`;
-   the state-level `apply_multi_controlled_1q` already supports any control
-   count, so this is just a builder + `Op` pass-through + tests.
+   `mcu(gate, controls, target)` / `mcx(controls, target)` on `Circuit`.
+   *(In flight in open PRs #2/#3.)*
 3. **Circuit inspection / diagram printing** — a `Display` or ASCII diagram
-   for `Circuit` (README roadmap item under v0.2 "circuit diagram printing").
-4. **Richer CLI** (`main.rs`) — accept a gate list / simple program instead
-   of the hard-coded Bell demo.
-5. **GHZ + multi-qubit fixtures** — the testing-strategy section mentions
-   GHZ; add an explicit GHZ prep + sampling test.
-6. **Performance (v0.3)** — in-place kernels already; consider benchmarks
+   for `Circuit`. *(PR #2 includes a `Display` impl.)*
+4. **Performance (v0.3)** — in-place kernels already; consider benchmarks
    and a sparse fast path only after the above.
+
+**Note on branch coordination:** this CLI work deliberately used only the
+builders already on `main` (`h, x, z, rx, ry, rz, cnot, swap, toffoli`) so
+it does not conflict with the in-flight builder PRs. Extend the parser once
+those merge.
 
 When adding a gate: add the matrix in `gates.rs`, a builder in `circuit.rs`
 (+ `Op` variant and `run` arm if it needs new state machinery), and both a

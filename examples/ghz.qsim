@@ -1,0 +1,7 @@
+# A 3-qubit GHZ state: (|000> + |111>)/sqrt(2).
+# Run with:  cargo run -- examples/ghz.qsim
+qubits 3
+h 0
+cnot 0 1
+cnot 0 2
+sample 1000 42

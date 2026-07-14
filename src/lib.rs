@@ -6,10 +6,12 @@
 //! - [`state::State`] — the `2^n` complex amplitude vector of an `n`-qubit register.
 //! - [`gates`] — unitary matrices for the standard gate set.
 //! - [`circuit::Circuit`] — a builder that sequences gates and runs them.
+//! - [`program`] — a tiny text format that parses into a [`circuit::Circuit`].
 //! - [`rng::Rng`] — a seedable RNG used for reproducible measurement sampling.
 
 pub mod circuit;
 pub mod gates;
+pub mod program;
 pub mod rng;
 pub mod state;
 

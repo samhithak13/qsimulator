@@ -37,7 +37,9 @@ qsimulator/
 │   ├── state.rs    # State vector representation
 │   ├── gates.rs    # Gate definitions (unitary matrices)
 │   ├── circuit.rs  # Circuit builder & execution
-│   └── main.rs     # Small demo CLI (Bell state)
+│   ├── program.rs  # Text program parser for the CLI
+│   └── main.rs     # CLI: runs program files, stdin, or a Bell demo
+├── examples/       # Sample .qsim program files
 ├── tests/          # Integration tests
 ├── docs/           # Design notes & documentation
 └── .github/        # CI workflows
@@ -46,12 +48,43 @@ qsimulator/
 ## Quick start
 
 ```bash
-# Run the demo (prepares and measures a Bell state)
+# Run the built-in demo (prepares and measures a Bell state)
 cargo run
+
+# Run a program file …
+cargo run -- examples/ghz.qsim
+
+# … or pipe a program in on standard input
+echo 'qubits 1
+h 0
+sample 1000' | cargo run -- -
+
+# See the program grammar and all directives
+cargo run -- --help
 
 # Run the test suite
 cargo test
 ```
+
+### Program files
+
+A program is one directive per line (`#` starts a comment). The first
+directive must declare the register size:
+
+```text
+# A 3-qubit GHZ state, sampled 1000 times.
+qubits 3
+h 0
+cnot 0 1
+cnot 0 2
+sample 1000 42
+```
+
+Supported instructions: `h|x|z <t>`, `rx|ry|rz <angle> <t>` (angle is a
+float or a `pi`-expression like `pi/2` or `3pi/4`), `cnot <c> <t>`,
+`swap <a> <b>`, `toffoli <c1> <c2> <t>`, and `sample <shots> [seed]`.
+Running a program prints the final amplitudes and, if a `sample` directive
+is present, a measurement histogram.
 
 ## Roadmap
 
@@ -61,7 +94,7 @@ Milestones are tracked in the repository issues. High level:
    CNOT, measurement, circuit builder.  ✅ measurement done (seedable
    sampling, single-qubit + full-register collapse).
 2. **v0.2 — Ergonomics**: more gates (rotations, SWAP, Toffoli ✅), circuit
-   diagram printing, richer CLI.
+   diagram printing, richer CLI (program files + stdin ✅).
 3. **v0.3 — Performance**: in-place gate application, sparse fast paths,
    benchmarks.
 
