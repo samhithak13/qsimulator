@@ -69,6 +69,32 @@ impl Circuit {
         self
     }
 
+    pub fn y(&mut self, target: usize) -> &mut Self {
+        self.ops.push(Op::Single {
+            gate: gates::y(),
+            target,
+        });
+        self
+    }
+
+    /// Phase gate S = diag(1, i).
+    pub fn s(&mut self, target: usize) -> &mut Self {
+        self.ops.push(Op::Single {
+            gate: gates::s(),
+            target,
+        });
+        self
+    }
+
+    /// T gate = diag(1, e^{i·π/4}).
+    pub fn t(&mut self, target: usize) -> &mut Self {
+        self.ops.push(Op::Single {
+            gate: gates::t(),
+            target,
+        });
+        self
+    }
+
     /// Rotation about the X axis by `theta` on `target`.
     pub fn rx(&mut self, theta: f64, target: usize) -> &mut Self {
         self.ops.push(Op::Single {
@@ -106,6 +132,28 @@ impl Circuit {
         self
     }
 
+    /// Controlled-Z: applies a phase of -1 to |11>, i.e. Z on `target` when
+    /// `control` is |1>. Symmetric in its two arguments.
+    pub fn cz(&mut self, control: usize, target: usize) -> &mut Self {
+        self.ops.push(Op::Controlled {
+            gate: gates::z(),
+            control,
+            target,
+        });
+        self
+    }
+
+    /// Controlled-U: applies the arbitrary 2x2 `gate` to `target` when
+    /// `control` is |1>.
+    pub fn cu(&mut self, gate: Gate, control: usize, target: usize) -> &mut Self {
+        self.ops.push(Op::Controlled {
+            gate,
+            control,
+            target,
+        });
+        self
+    }
+
     /// SWAP: exchange the states of qubits `a` and `b`.
     pub fn swap(&mut self, a: usize, b: usize) -> &mut Self {
         self.ops.push(Op::Swap { a, b });
@@ -118,6 +166,29 @@ impl Circuit {
         self.ops.push(Op::MultiControlled {
             gate: gates::x(),
             controls: vec![control1, control2],
+            target,
+        });
+        self
+    }
+
+    /// Multi-controlled X: flip `target` only when *every* qubit in
+    /// `controls` is |1>. Zero controls is an unconditional X, one control is
+    /// a CNOT, and two controls is a Toffoli.
+    pub fn mcx(&mut self, controls: &[usize], target: usize) -> &mut Self {
+        self.ops.push(Op::MultiControlled {
+            gate: gates::x(),
+            controls: controls.to_vec(),
+            target,
+        });
+        self
+    }
+
+    /// Multi-controlled U: apply the arbitrary 2x2 `gate` to `target` only
+    /// when *every* qubit in `controls` is |1>.
+    pub fn mcu(&mut self, gate: Gate, controls: &[usize], target: usize) -> &mut Self {
+        self.ops.push(Op::MultiControlled {
+            gate,
+            controls: controls.to_vec(),
             target,
         });
         self

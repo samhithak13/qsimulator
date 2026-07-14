@@ -63,9 +63,8 @@ extra context. Update it as features land.
 
 ### What works today
 
-Everything below is implemented, tested, and pushed to `main`. CI (fmt +
-clippy `-D warnings` + build + test) is green. **28 tests** across 7 test
-binaries.
+Everything below is implemented and tested. CI (fmt + clippy `-D warnings` +
+build + test) is green. **38 tests** across 8 test binaries.
 
 | Area | API | Status |
 |---|---|---|
@@ -78,7 +77,7 @@ binaries.
 | Measurement | `State::{prob_qubit_one, measure_qubit, measure_all}` | ✅ |
 | Sampling | `Circuit::sample(shots, seed) -> HashMap<usize, usize>` | ✅ |
 | RNG | `rng::Rng` (seedable xorshift64, SplitMix64 seeding) | ✅ |
-| Circuit builders | `h, x, z, rx, ry, rz, cnot, swap, toffoli` | ✅ |
+| Circuit builders | `h, x, y, z, s, t, rx, ry, rz, cnot, cz, cu, swap, toffoli, mcx, mcu` | ✅ |
 
 ### File map
 
@@ -119,17 +118,15 @@ cargo run            # the Bell-state sampling demo
 New functionality must land with its test in the same commit, and all four
 checks above must pass before committing.
 
-### Suggested next steps (v0.2 → v0.3, not yet started)
+### Suggested next steps (v0.2 → v0.3)
 
-Roughly in priority order; none of these exist yet:
+Roughly in priority order. Steps 1 & 2 landed this session; 3–6 remain.
 
-1. **More builder coverage** — expose `y`, `s`, `t`, and a controlled-Z /
-   controlled-U builder on `Circuit` (the gate matrices already exist;
-   `apply_controlled_1q` already handles arbitrary 2x2). Small, high-value.
-2. **Arbitrary controlled-U builder** — generalize `toffoli` into
-   `mcu(gate, controls, target)` / `mcx(controls, target)` on `Circuit`;
-   the state-level `apply_multi_controlled_1q` already supports any control
-   count, so this is just a builder + `Op` pass-through + tests.
+1. ✅ **More builder coverage** — `y`, `s`, `t`, and `cz` (controlled-Z) /
+   `cu` (arbitrary controlled-U) builders now exist on `Circuit`. Done.
+2. ✅ **Arbitrary controlled-U builder** — `mcx(controls, target)` and
+   `mcu(gate, controls, target)` generalize `toffoli` (which is now just the
+   two-control X special case). Covered by `tests/builders.rs`. Done.
 3. **Circuit inspection / diagram printing** — a `Display` or ASCII diagram
    for `Circuit` (README roadmap item under v0.2 "circuit diagram printing").
 4. **Richer CLI** (`main.rs`) — accept a gate list / simple program instead
