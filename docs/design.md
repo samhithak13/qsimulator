@@ -64,7 +64,7 @@ extra context. Update it as features land.
 ### What works today
 
 Everything below is implemented, tested, and pushed to `main`. CI (fmt +
-clippy `-D warnings` + build + test) is green. **28 tests** across 7 test
+clippy `-D warnings` + build + test) is green. **37 tests** across 9 test
 binaries.
 
 | Area | API | Status |
@@ -78,7 +78,9 @@ binaries.
 | Measurement | `State::{prob_qubit_one, measure_qubit, measure_all}` | ✅ |
 | Sampling | `Circuit::sample(shots, seed) -> HashMap<usize, usize>` | ✅ |
 | RNG | `rng::Rng` (seedable xorshift64, SplitMix64 seeding) | ✅ |
-| Circuit builders | `h, x, z, rx, ry, rz, cnot, swap, toffoli` | ✅ |
+| Circuit single-qubit builders | `h, x, y, z, s, t, rx, ry, rz` | ✅ |
+| Circuit controlled builders | `cnot, cz, cu(gate,c,t), mcx(controls,t), mcu(gate,controls,t)` | ✅ |
+| Circuit other builders | `swap, toffoli` (toffoli now delegates to `mcx`) | ✅ |
 
 ### File map
 
@@ -91,7 +93,8 @@ binaries.
 - `src/lib.rs` — module wiring and re-exports (`Circuit`, `State`, `Rng`).
 - `src/main.rs` — demo: builds a Bell state and samples 1000 shots.
 - `tests/` — `bell_state.rs`, `measurement.rs`, `rotations.rs`, `swap.rs`,
-  `toffoli.rs`.
+  `toffoli.rs`, `single_qubit_builders.rs` (y/s/t), `controlled_builders.rs`
+  (cz/cu/mcx/mcu).
 
 ### Frozen conventions (do not change silently)
 
@@ -119,24 +122,27 @@ cargo run            # the Bell-state sampling demo
 New functionality must land with its test in the same commit, and all four
 checks above must pass before committing.
 
+### Recently done
+
+- ✅ **More builder coverage** (was #1) — `y`, `s`, `t` single-qubit builders
+  plus `cz` (controlled-Z) and `cu(gate, control, target)` (arbitrary
+  controlled-U) on `Circuit`. Tested in `tests/single_qubit_builders.rs` and
+  `tests/controlled_builders.rs`.
+- ✅ **Arbitrary controlled-U builder** (was #2) — `mcu(gate, controls, target)`
+  and `mcx(controls, target)` on `Circuit`; `toffoli` now delegates to `mcx`.
+  Tested in `tests/controlled_builders.rs` (incl. a 3-control C3X).
+
 ### Suggested next steps (v0.2 → v0.3, not yet started)
 
 Roughly in priority order; none of these exist yet:
 
-1. **More builder coverage** — expose `y`, `s`, `t`, and a controlled-Z /
-   controlled-U builder on `Circuit` (the gate matrices already exist;
-   `apply_controlled_1q` already handles arbitrary 2x2). Small, high-value.
-2. **Arbitrary controlled-U builder** — generalize `toffoli` into
-   `mcu(gate, controls, target)` / `mcx(controls, target)` on `Circuit`;
-   the state-level `apply_multi_controlled_1q` already supports any control
-   count, so this is just a builder + `Op` pass-through + tests.
-3. **Circuit inspection / diagram printing** — a `Display` or ASCII diagram
+1. **Circuit inspection / diagram printing** — a `Display` or ASCII diagram
    for `Circuit` (README roadmap item under v0.2 "circuit diagram printing").
-4. **Richer CLI** (`main.rs`) — accept a gate list / simple program instead
+2. **Richer CLI** (`main.rs`) — accept a gate list / simple program instead
    of the hard-coded Bell demo.
-5. **GHZ + multi-qubit fixtures** — the testing-strategy section mentions
+3. **GHZ + multi-qubit fixtures** — the testing-strategy section mentions
    GHZ; add an explicit GHZ prep + sampling test.
-6. **Performance (v0.3)** — in-place kernels already; consider benchmarks
+4. **Performance (v0.3)** — in-place kernels already; consider benchmarks
    and a sparse fast path only after the above.
 
 When adding a gate: add the matrix in `gates.rs`, a builder in `circuit.rs`
