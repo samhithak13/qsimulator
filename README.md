@@ -61,7 +61,7 @@ Milestones are tracked in the repository issues. High level:
    CNOT, measurement, circuit builder.  ✅ measurement done (seedable
    sampling, single-qubit + full-register collapse).
 2. **v0.2 — Ergonomics**: more gates (rotations, SWAP, Toffoli ✅), circuit
-   diagram printing, richer CLI.
+   diagram printing ✅, richer CLI.
 3. **v0.3 — Performance**: in-place gate application, sparse fast paths,
    benchmarks.
 

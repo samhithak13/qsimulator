@@ -8,6 +8,9 @@ fn main() {
     circuit.h(0).cnot(0, 1);
     let state = circuit.run();
 
+    println!("Circuit:");
+    println!("{circuit}\n");
+
     println!("Bell state amplitudes:");
     for (i, amp) in state.amplitudes().iter().enumerate() {
         println!(

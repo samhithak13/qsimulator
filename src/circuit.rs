@@ -5,19 +5,25 @@ use crate::rng::Rng;
 use crate::state::State;
 use num_complex::Complex64;
 use std::collections::HashMap;
+use std::fmt;
 
 type Gate = [[Complex64; 2]; 2];
 
 /// A single instruction in a circuit.
+///
+/// Each gate-bearing variant carries a short `label` (e.g. `"H"`, `"RX"`)
+/// used only for diagram rendering; it never affects execution.
 enum Op {
     Single {
         gate: Gate,
         target: usize,
+        label: &'static str,
     },
     Controlled {
         gate: Gate,
         control: usize,
         target: usize,
+        label: &'static str,
     },
     Swap {
         a: usize,
@@ -27,6 +33,7 @@ enum Op {
         gate: Gate,
         controls: Vec<usize>,
         target: usize,
+        label: &'static str,
     },
 }
 
@@ -49,6 +56,7 @@ impl Circuit {
         self.ops.push(Op::Single {
             gate: gates::h(),
             target,
+            label: "H",
         });
         self
     }
@@ -57,6 +65,7 @@ impl Circuit {
         self.ops.push(Op::Single {
             gate: gates::x(),
             target,
+            label: "X",
         });
         self
     }
@@ -65,6 +74,7 @@ impl Circuit {
         self.ops.push(Op::Single {
             gate: gates::z(),
             target,
+            label: "Z",
         });
         self
     }
@@ -73,6 +83,7 @@ impl Circuit {
         self.ops.push(Op::Single {
             gate: gates::y(),
             target,
+            label: "Y",
         });
         self
     }
@@ -82,6 +93,7 @@ impl Circuit {
         self.ops.push(Op::Single {
             gate: gates::s(),
             target,
+            label: "S",
         });
         self
     }
@@ -91,6 +103,7 @@ impl Circuit {
         self.ops.push(Op::Single {
             gate: gates::t(),
             target,
+            label: "T",
         });
         self
     }
@@ -100,6 +113,7 @@ impl Circuit {
         self.ops.push(Op::Single {
             gate: gates::rx(theta),
             target,
+            label: "RX",
         });
         self
     }
@@ -109,6 +123,7 @@ impl Circuit {
         self.ops.push(Op::Single {
             gate: gates::ry(theta),
             target,
+            label: "RY",
         });
         self
     }
@@ -118,6 +133,7 @@ impl Circuit {
         self.ops.push(Op::Single {
             gate: gates::rz(theta),
             target,
+            label: "RZ",
         });
         self
     }
@@ -128,6 +144,7 @@ impl Circuit {
             gate: gates::x(),
             control,
             target,
+            label: "X",
         });
         self
     }
@@ -139,6 +156,7 @@ impl Circuit {
             gate,
             control,
             target,
+            label: "U",
         });
         self
     }
@@ -146,7 +164,13 @@ impl Circuit {
     /// Controlled-Z: apply a phase of -1 to the |11> component of `control`
     /// and `target`. Symmetric in its two arguments.
     pub fn cz(&mut self, control: usize, target: usize) -> &mut Self {
-        self.cu(gates::z(), control, target)
+        self.ops.push(Op::Controlled {
+            gate: gates::z(),
+            control,
+            target,
+            label: "Z",
+        });
+        self
     }
 
     /// SWAP: exchange the states of qubits `a` and `b`.
@@ -167,6 +191,7 @@ impl Circuit {
             gate,
             controls: controls.to_vec(),
             target,
+            label: "U",
         });
         self
     }
@@ -178,7 +203,13 @@ impl Circuit {
     /// [`cnot`]: Circuit::cnot
     /// [`toffoli`]: Circuit::toffoli
     pub fn mcx(&mut self, controls: &[usize], target: usize) -> &mut Self {
-        self.mcu(gates::x(), controls, target)
+        self.ops.push(Op::MultiControlled {
+            gate: gates::x(),
+            controls: controls.to_vec(),
+            target,
+            label: "X",
+        });
+        self
     }
 
     /// Toffoli (CCNOT): flip `target` only when both `control1` and
@@ -192,17 +223,19 @@ impl Circuit {
         let mut state = State::new(self.n_qubits);
         for op in &self.ops {
             match op {
-                Op::Single { gate, target } => state.apply_1q(gate, *target),
+                Op::Single { gate, target, .. } => state.apply_1q(gate, *target),
                 Op::Controlled {
                     gate,
                     control,
                     target,
+                    ..
                 } => state.apply_controlled_1q(gate, *control, *target),
                 Op::Swap { a, b } => state.swap_qubits(*a, *b),
                 Op::MultiControlled {
                     gate,
                     controls,
                     target,
+                    ..
                 } => state.apply_multi_controlled_1q(gate, controls, *target),
             }
         }
@@ -225,5 +258,124 @@ impl Circuit {
             *histogram.entry(outcome).or_insert(0) += 1;
         }
         histogram
+    }
+
+    /// Render the circuit as an ASCII diagram.
+    ///
+    /// One column per operation, time flowing left to right, with qubit `q0`
+    /// on the top row. Controls are drawn as `*`, targets as their gate label
+    /// (CNOT/Toffoli targets as `X`), SWAP endpoints as `x`, and `|` connects
+    /// the qubits an operation spans. The diagram is presentational only —
+    /// each operation occupies its own column, so it shows program order, not
+    /// a parallel-scheduled timeline.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use qsimulator::Circuit;
+    /// let mut c = Circuit::new(2);
+    /// c.h(0).cnot(0, 1);
+    /// assert_eq!(c.diagram(), "q0: -H-*-\nq1: ---X-");
+    /// ```
+    pub fn diagram(&self) -> String {
+        let n = self.n_qubits;
+
+        // For each op build one column: per qubit, the token to place, or
+        // `None` for a plain wire.
+        let mut columns: Vec<Vec<Option<&'static str>>> = Vec::with_capacity(self.ops.len());
+        for op in &self.ops {
+            let mut col: Vec<Option<&'static str>> = vec![None; n];
+            match op {
+                Op::Single { target, label, .. } => {
+                    col[*target] = Some(label);
+                }
+                Op::Controlled {
+                    control,
+                    target,
+                    label,
+                    ..
+                } => {
+                    col[*control] = Some("*");
+                    col[*target] = Some(label);
+                    fill_connector(&mut col, &[*control, *target]);
+                }
+                Op::Swap { a, b } => {
+                    col[*a] = Some("x");
+                    col[*b] = Some("x");
+                    fill_connector(&mut col, &[*a, *b]);
+                }
+                Op::MultiControlled {
+                    controls,
+                    target,
+                    label,
+                    ..
+                } => {
+                    for &c in controls {
+                        col[c] = Some("*");
+                    }
+                    col[*target] = Some(label);
+                    let mut involved = controls.clone();
+                    involved.push(*target);
+                    fill_connector(&mut col, &involved);
+                }
+            }
+            columns.push(col);
+        }
+
+        // Cell width = widest token present (at least 1).
+        let cell_w = columns
+            .iter()
+            .flatten()
+            .flatten()
+            .map(|s| s.len())
+            .max()
+            .unwrap_or(1)
+            .max(1);
+
+        // Width of the "qN:" label gutter, sized for the largest qubit index.
+        let gutter = format!("q{}:", n.saturating_sub(1)).len();
+
+        let mut lines = Vec::with_capacity(n);
+        for r in 0..n {
+            let mut line = format!("{:<width$} -", format!("q{r}:"), width = gutter);
+            if columns.is_empty() {
+                line.push_str(&"-".repeat(cell_w));
+            }
+            for col in &columns {
+                line.push_str(&center(col[r].unwrap_or(""), cell_w));
+                line.push('-');
+            }
+            lines.push(line);
+        }
+        lines.join("\n")
+    }
+}
+
+/// Mark the rows strictly between the outermost involved qubits (that are not
+/// themselves involved) with a `|` connector.
+fn fill_connector(col: &mut [Option<&'static str>], involved: &[usize]) {
+    let min = *involved.iter().min().unwrap();
+    let max = *involved.iter().max().unwrap();
+    for (r, cell) in col.iter_mut().enumerate() {
+        if r > min && r < max && cell.is_none() {
+            *cell = Some("|");
+        }
+    }
+}
+
+/// Center `token` in a field of `width`, padded with `-` (the wire character).
+fn center(token: &str, width: usize) -> String {
+    if token.len() >= width {
+        return token.to_string();
+    }
+    let pad = width - token.len();
+    let left = pad / 2;
+    let right = pad - left;
+    format!("{}{}{}", "-".repeat(left), token, "-".repeat(right))
+}
+
+impl fmt::Display for Circuit {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.diagram())
     }
 }

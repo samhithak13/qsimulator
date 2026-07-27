@@ -64,8 +64,8 @@ extra context. Update it as features land.
 ### What works today
 
 Everything below is implemented, tested, and pushed to `main`. CI (fmt +
-clippy `-D warnings` + build + test) is green. **37 tests** across 9 test
-binaries.
+clippy `-D warnings` + build + test) is green. **46 tests** (45 unit +
+integration across 9 binaries, plus a doctest).
 
 | Area | API | Status |
 |---|---|---|
@@ -81,6 +81,7 @@ binaries.
 | Circuit single-qubit builders | `h, x, y, z, s, t, rx, ry, rz` | ✅ |
 | Circuit controlled builders | `cnot, cz, cu(gate,c,t), mcx(controls,t), mcu(gate,controls,t)` | ✅ |
 | Circuit other builders | `swap, toffoli` (toffoli now delegates to `mcx`) | ✅ |
+| Circuit rendering | `Circuit::diagram() -> String` + `Display` (ASCII diagram) | ✅ |
 
 ### File map
 
@@ -94,7 +95,11 @@ binaries.
 - `src/main.rs` — demo: builds a Bell state and samples 1000 shots.
 - `tests/` — `bell_state.rs`, `measurement.rs`, `rotations.rs`, `swap.rs`,
   `toffoli.rs`, `single_qubit_builders.rs` (y/s/t), `controlled_builders.rs`
-  (cz/cu/mcx/mcu).
+  (cz/cu/mcx/mcu), `diagram.rs` (ASCII rendering).
+
+Note: `Op` variants now carry a `label: &'static str` used only by
+`diagram()`; it never affects execution (`run` ignores it). New gate
+builders should pass a short static label (e.g. `"H"`, `"RX"`).
 
 ### Frozen conventions (do not change silently)
 
@@ -131,18 +136,20 @@ checks above must pass before committing.
 - ✅ **Arbitrary controlled-U builder** (was #2) — `mcu(gate, controls, target)`
   and `mcx(controls, target)` on `Circuit`; `toffoli` now delegates to `mcx`.
   Tested in `tests/controlled_builders.rs` (incl. a 3-control C3X).
+- ✅ **Circuit diagram printing** (was #1) — `Circuit::diagram()` and a
+  `Display` impl render an ASCII diagram (one column per op, `*` controls,
+  `|` connectors, `x` for SWAP). Needed a `label` on each `Op`. Tested in
+  `tests/diagram.rs`; the demo in `main.rs` prints the circuit.
 
 ### Suggested next steps (v0.2 → v0.3, not yet started)
 
 Roughly in priority order; none of these exist yet:
 
-1. **Circuit inspection / diagram printing** — a `Display` or ASCII diagram
-   for `Circuit` (README roadmap item under v0.2 "circuit diagram printing").
-2. **Richer CLI** (`main.rs`) — accept a gate list / simple program instead
+1. **Richer CLI** (`main.rs`) — accept a gate list / simple program instead
    of the hard-coded Bell demo.
-3. **GHZ + multi-qubit fixtures** — the testing-strategy section mentions
+2. **GHZ + multi-qubit fixtures** — the testing-strategy section mentions
    GHZ; add an explicit GHZ prep + sampling test.
-4. **Performance (v0.3)** — in-place kernels already; consider benchmarks
+3. **Performance (v0.3)** — in-place kernels already; consider benchmarks
    and a sparse fast path only after the above.
 
 When adding a gate: add the matrix in `gates.rs`, a builder in `circuit.rs`
