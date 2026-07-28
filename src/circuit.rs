@@ -13,6 +13,7 @@ type Gate = [[Complex64; 2]; 2];
 ///
 /// Each gate-bearing variant carries a short `label` (e.g. `"H"`, `"RX"`)
 /// used only for diagram rendering; it never affects execution.
+#[derive(Debug, Clone)]
 enum Op {
     Single {
         gate: Gate,
@@ -38,6 +39,7 @@ enum Op {
 }
 
 /// A quantum circuit: an ordered list of gate operations on `n_qubits`.
+#[derive(Debug, Clone)]
 pub struct Circuit {
     n_qubits: usize,
     ops: Vec<Op>,

@@ -64,8 +64,8 @@ extra context. Update it as features land.
 ### What works today
 
 Everything below is implemented, tested, and pushed to `main`. CI (fmt +
-clippy `-D warnings` + build + test) is green. **46 tests** (45 unit +
-integration across 9 binaries, plus a doctest).
+clippy `-D warnings` + build + test) is green. **57 tests** (56 unit +
+integration across 10 binaries, plus a doctest).
 
 | Area | API | Status |
 |---|---|---|
@@ -82,6 +82,8 @@ integration across 9 binaries, plus a doctest).
 | Circuit controlled builders | `cnot, cz, cu(gate,c,t), mcx(controls,t), mcu(gate,controls,t)` | ✅ |
 | Circuit other builders | `swap, toffoli` (toffoli now delegates to `mcx`) | ✅ |
 | Circuit rendering | `Circuit::diagram() -> String` + `Display` (ASCII diagram) | ✅ |
+| Text program format | `program::parse(&str) -> Result<Program, String>` | ✅ |
+| CLI | `qsimulator [FILE\|-\|--help]` (demo, run a program, stdin) | ✅ |
 
 ### File map
 
@@ -91,11 +93,13 @@ integration across 9 binaries, plus a doctest).
 - `src/circuit.rs` — `Op` enum (`Single`, `Controlled`, `Swap`,
   `MultiControlled`), the `Circuit` builder, `run`, and `sample`.
 - `src/rng.rs` — the RNG and its unit tests.
+- `src/program.rs` — text program parser (`parse`, `Program`, `SampleSpec`).
 - `src/lib.rs` — module wiring and re-exports (`Circuit`, `State`, `Rng`).
-- `src/main.rs` — demo: builds a Bell state and samples 1000 shots.
+- `src/main.rs` — the CLI: built-in demo, or parse+run a program file/stdin.
+- `programs/ghz.qsim` — sample program in the text format.
 - `tests/` — `bell_state.rs`, `measurement.rs`, `rotations.rs`, `swap.rs`,
   `toffoli.rs`, `single_qubit_builders.rs` (y/s/t), `controlled_builders.rs`
-  (cz/cu/mcx/mcu), `diagram.rs` (ASCII rendering).
+  (cz/cu/mcx/mcu), `diagram.rs` (ASCII rendering), `program.rs` (parser).
 
 Note: `Op` variants now carry a `label: &'static str` used only by
 `diagram()`; it never affects execution (`run` ignores it). New gate
@@ -140,17 +144,23 @@ checks above must pass before committing.
   `Display` impl render an ASCII diagram (one column per op, `*` controls,
   `|` connectors, `x` for SWAP). Needed a `label` on each `Op`. Tested in
   `tests/diagram.rs`; the demo in `main.rs` prints the circuit.
+- ✅ **Richer CLI** (was #1) — a text program format (`src/program.rs`:
+  `qubits N`, gate lines, optional `sample SHOTS SEED`, `#` comments, pi-form
+  angles) parsed into a `Program`. `main.rs` runs a file, stdin (`-`), or the
+  built-in demo, with `--help`. Tested in `tests/program.rs`; sample program
+  at `programs/ghz.qsim`. This also covers a GHZ end-to-end path.
 
 ### Suggested next steps (v0.2 → v0.3, not yet started)
 
 Roughly in priority order; none of these exist yet:
 
-1. **Richer CLI** (`main.rs`) — accept a gate list / simple program instead
-   of the hard-coded Bell demo.
-2. **GHZ + multi-qubit fixtures** — the testing-strategy section mentions
-   GHZ; add an explicit GHZ prep + sampling test.
-3. **Performance (v0.3)** — in-place kernels already; consider benchmarks
+1. **GHZ + multi-qubit fixtures** — a dedicated `tests/` fixture asserting
+   GHZ probabilities/sampling for n = 3..5 (the CLI exercises GHZ, but there
+   is no direct probability assertion beyond the program parser test).
+2. **Performance (v0.3)** — in-place kernels already; consider benchmarks
    and a sparse fast path only after the above.
+3. **OpenQASM-ish import/export** — the text format is bespoke; a small
+   OpenQASM 2 subset importer would improve interop (larger effort).
 
 When adding a gate: add the matrix in `gates.rs`, a builder in `circuit.rs`
 (+ `Op` variant and `run` arm if it needs new state machinery), and both a

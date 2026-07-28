@@ -46,12 +46,36 @@ qsimulator/
 ## Quick start
 
 ```bash
-# Run the demo (prepares and measures a Bell state)
+# Run the built-in demo (prepares and samples a Bell state)
 cargo run
+
+# Run a circuit described in a text program (see programs/ghz.qsim)
+cargo run -- programs/ghz.qsim
+
+# Read a program from stdin, or show the program format
+printf 'qubits 1\nx 0\n' | cargo run -- -
+cargo run -- --help
 
 # Run the test suite
 cargo test
 ```
+
+### Program format
+
+Circuits can be written as a small line-based text format instead of Rust —
+one instruction per line, `#` for comments:
+
+```text
+qubits 3
+h 0
+cnot 0 1
+cnot 1 2        # GHZ state
+sample 1000 42
+```
+
+Supported: `qubits N`; `h|x|y|z|s|t Q`; `rx|ry|rz THETA Q` (THETA is a float
+or a symbolic multiple of pi like `pi/2`, `-pi/4`, `2pi`); `cnot|cz C T`;
+`swap A B`; `toffoli C1 C2 T`; and an optional `sample SHOTS SEED`.
 
 ## Roadmap
 
@@ -61,7 +85,7 @@ Milestones are tracked in the repository issues. High level:
    CNOT, measurement, circuit builder.  ✅ measurement done (seedable
    sampling, single-qubit + full-register collapse).
 2. **v0.2 — Ergonomics**: more gates (rotations, SWAP, Toffoli ✅), circuit
-   diagram printing ✅, richer CLI.
+   diagram printing ✅, richer CLI ✅ (text program format).
 3. **v0.3 — Performance**: in-place gate application, sparse fast paths,
    benchmarks.
 
