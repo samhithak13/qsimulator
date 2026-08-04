@@ -67,6 +67,32 @@ pub fn p(lambda: f64) -> Gate {
     [[c(1.0, 0.0), c(0.0, 0.0)], [c(0.0, 0.0), c(co, s)]]
 }
 
+/// General single-qubit gate U3(θ, φ, λ), the OpenQASM `u3`:
+/// `[[cos(θ/2),        -e^{iλ}·sin(θ/2)],`
+/// ` [e^{iφ}·sin(θ/2),  e^{i(φ+λ)}·cos(θ/2)]]`.
+///
+/// Every single-qubit unitary is a `u3` up to global phase — e.g.
+/// `u3(π,0,π)` = X, `u3(0,0,λ)` = [`p`](p)(λ).
+pub fn u3(theta: f64, phi: f64, lambda: f64) -> Gate {
+    let (st, ct) = (theta / 2.0).sin_cos();
+    let m00 = c(ct, 0.0);
+    // -e^{iλ}·sin(θ/2)
+    let m01 = c(-lambda.cos() * st, -lambda.sin() * st);
+    // e^{iφ}·sin(θ/2)
+    let m10 = c(phi.cos() * st, phi.sin() * st);
+    // e^{i(φ+λ)}·cos(θ/2)
+    let (spl, cpl) = (phi + lambda).sin_cos();
+    let m11 = c(cpl * ct, spl * ct);
+    [[m00, m01], [m10, m11]]
+}
+
+/// Single-qubit gate U2(φ, λ) = U3(π/2, φ, λ), the OpenQASM `u2`.
+///
+/// For example `u2(0, π)` = H.
+pub fn u2(phi: f64, lambda: f64) -> Gate {
+    u3(std::f64::consts::FRAC_PI_2, phi, lambda)
+}
+
 /// Rotation about the X axis by angle `theta`:
 /// `[[cos(θ/2), -i·sin(θ/2)], [-i·sin(θ/2), cos(θ/2)]]`.
 ///
@@ -174,5 +200,27 @@ mod tests {
         assert_gate_eq(&p(PI), &z());
         assert_gate_eq(&p(PI / 2.0), &s());
         assert_gate_eq(&p(PI / 4.0), &t());
+    }
+
+    #[test]
+    fn u3_specializes_to_known_gates() {
+        let id = [[c(1.0, 0.0), c(0.0, 0.0)], [c(0.0, 0.0), c(1.0, 0.0)]];
+        assert_gate_eq(&u3(0.0, 0.0, 0.0), &id);
+        assert_gate_eq(&u3(PI, 0.0, PI), &x());
+        assert_gate_eq(&u3(0.0, 0.0, 0.9), &p(0.9));
+    }
+
+    #[test]
+    fn u2_zero_pi_is_hadamard() {
+        assert_gate_eq(&u2(0.0, PI), &h());
+    }
+
+    #[test]
+    fn u3_is_unitary() {
+        let g = u3(0.7, -1.1, 2.3);
+        let dot = |i: usize, j: usize| g[i][0] * g[j][0].conj() + g[i][1] * g[j][1].conj();
+        let prod = [[dot(0, 0), dot(0, 1)], [dot(1, 0), dot(1, 1)]];
+        let id = [[c(1.0, 0.0), c(0.0, 0.0)], [c(0.0, 0.0), c(1.0, 0.0)]];
+        assert_gate_eq(&prod, &id);
     }
 }

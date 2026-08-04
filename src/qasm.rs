@@ -11,15 +11,16 @@
 //!   indices).
 //! - `creg name[N];`, `barrier ...;`, and `measure ... -> ...;` are accepted
 //!   and ignored (sampling is done separately via [`Circuit::sample`]).
-//! - Gates: `x y z h s t sdg tdg` (1 qubit), `rx ry rz(theta)` and the phase
-//!   gate `u1(lambda)` / `p(lambda)` (1 qubit), `cx cz swap` (2 qubits),
-//!   `ccx` (3 qubits). Angles use the same syntax as the text program format
+//! - Gates: `x y z h s t sdg tdg` (1 qubit), `rx ry rz(theta)`, the phase gate
+//!   `u1(lambda)` / `p(lambda)`, and the general `u2(phi,lambda)` /
+//!   `u3(theta,phi,lambda)` (1 qubit); `cx cz swap` (2 qubits); `ccx`
+//!   (3 qubits). Angles use the same syntax as the text program format
 //!   (`pi`, `pi/2`, `-pi/4`, `2*pi`, or a float).
 //! - `//` line comments and `/* ... */` block comments.
 //!
-//! Anything else — custom `gate` definitions, `if`, `reset`, `u2/u3`, and
-//! controlled rotations — is reported as an unsupported-feature error rather
-//! than silently mis-simulated.
+//! Anything else — custom `gate` definitions, `if`, `reset`, and controlled
+//! rotations — is reported as an unsupported-feature error rather than
+//! silently mis-simulated.
 
 use crate::program::parse_angle;
 use crate::Circuit;
@@ -123,89 +124,108 @@ fn apply_gate(
     let (name, params) = parse_head(head);
     let q = parse_operands(operands_str, regs)?;
 
-    // Validate the operand count for the named gate.
-    let want = |k: usize| -> Result<(), String> {
-        if q.len() == k {
-            Ok(())
-        } else {
-            Err(format!(
-                "`{name}` takes {k} qubit(s), got {} in `{stmt}`",
-                q.len()
-            ))
-        }
+    // Parse the parenthesized angle parameters, if any.
+    let angles: Vec<f64> = match params {
+        Some(p) if !p.trim().is_empty() => p
+            .split(',')
+            .map(|a| parse_angle(a.trim()))
+            .collect::<Result<_, _>>()
+            .map_err(|e| format!("{e} in `{stmt}`"))?,
+        _ => Vec::new(),
     };
-    let angle = || -> Result<f64, String> {
-        let p = params.ok_or_else(|| format!("`{name}` needs an angle in `{stmt}`"))?;
-        parse_angle(p.trim()).map_err(|e| format!("{e} in `{stmt}`"))
+
+    // Validate the operand and angle counts for the named gate.
+    let want = |nq: usize, na: usize| -> Result<(), String> {
+        if q.len() != nq {
+            return Err(format!(
+                "`{name}` takes {nq} qubit(s), got {} in `{stmt}`",
+                q.len()
+            ));
+        }
+        if angles.len() != na {
+            return Err(format!(
+                "`{name}` takes {na} angle(s), got {} in `{stmt}`",
+                angles.len()
+            ));
+        }
+        Ok(())
     };
 
     match name {
         "x" => {
-            want(1)?;
+            want(1, 0)?;
             circuit.x(q[0]);
         }
         "y" => {
-            want(1)?;
+            want(1, 0)?;
             circuit.y(q[0]);
         }
         "z" => {
-            want(1)?;
+            want(1, 0)?;
             circuit.z(q[0]);
         }
         "h" => {
-            want(1)?;
+            want(1, 0)?;
             circuit.h(q[0]);
         }
         "s" => {
-            want(1)?;
+            want(1, 0)?;
             circuit.s(q[0]);
         }
         "t" => {
-            want(1)?;
+            want(1, 0)?;
             circuit.t(q[0]);
         }
         "sdg" => {
-            want(1)?;
+            want(1, 0)?;
             circuit.sdg(q[0]);
         }
         "tdg" => {
-            want(1)?;
+            want(1, 0)?;
             circuit.tdg(q[0]);
         }
         // `u1(lambda)` is the OpenQASM 2 phase gate; `p` is its OpenQASM 3 name.
         "u1" | "p" => {
-            want(1)?;
-            circuit.p(angle()?, q[0]);
+            want(1, 1)?;
+            circuit.p(angles[0], q[0]);
+        }
+        "u2" => {
+            want(1, 2)?;
+            circuit.u2(angles[0], angles[1], q[0]);
+        }
+        "u3" => {
+            want(1, 3)?;
+            circuit.u3(angles[0], angles[1], angles[2], q[0]);
         }
         "rx" => {
-            want(1)?;
-            circuit.rx(angle()?, q[0]);
+            want(1, 1)?;
+            circuit.rx(angles[0], q[0]);
         }
         "ry" => {
-            want(1)?;
-            circuit.ry(angle()?, q[0]);
+            want(1, 1)?;
+            circuit.ry(angles[0], q[0]);
         }
         "rz" => {
-            want(1)?;
-            circuit.rz(angle()?, q[0]);
+            want(1, 1)?;
+            circuit.rz(angles[0], q[0]);
         }
         "cx" => {
-            want(2)?;
+            want(2, 0)?;
             require_distinct(&q, stmt)?;
             circuit.cnot(q[0], q[1]);
         }
         "cz" => {
-            want(2)?;
+            want(2, 0)?;
             require_distinct(&q, stmt)?;
             circuit.cz(q[0], q[1]);
         }
         "swap" => {
-            want(2)?;
+            want(2, 0)?;
             require_distinct(&q, stmt)?;
             circuit.swap(q[0], q[1]);
         }
         "ccx" => {
-            want(3)?;
+            want(3, 0)?;
             require_distinct(&q, stmt)?;
             circuit.toffoli(q[0], q[1], q[2]);
         }

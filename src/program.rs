@@ -13,10 +13,11 @@
 //! ```
 //!
 //! Supported instructions: `qubits N`; single-qubit `h/x/y/z/s/t/sdg/tdg Q`;
-//! rotations `rx/ry/rz THETA Q` and the phase gate `p THETA Q`; two-qubit
-//! `cnot/cz C T` and `swap A B`; `toffoli C1 C2 T`; and a terminal
-//! `sample SHOTS SEED`. Angles are a plain float or a symbolic multiple of pi
-//! such as `pi`, `pi/2`, `-pi/4`, or `2pi`.
+//! rotations `rx/ry/rz THETA Q`, phase `p THETA Q`, and the general
+//! `u2 PHI LAMBDA Q` / `u3 THETA PHI LAMBDA Q`; two-qubit `cnot/cz C T` and
+//! `swap A B`; `toffoli C1 C2 T`; and a terminal `sample SHOTS SEED`. Angles
+//! are a plain float or a symbolic multiple of pi such as `pi`, `pi/2`,
+//! `-pi/4`, or `2pi`.
 
 use crate::Circuit;
 use std::f64::consts::PI;
@@ -98,6 +99,21 @@ pub fn parse(src: &str) -> Result<Program, String> {
                     "p" => c.p(theta, q),
                     _ => unreachable!(),
                 };
+            }
+            "u2" => {
+                expect_arity(&toks, 4).map_err(&at)?;
+                let phi = parse_angle(toks[1]).map_err(&at)?;
+                let lambda = parse_angle(toks[2]).map_err(&at)?;
+                let q = parse_qubit(&toks, 3, n).map_err(&at)?;
+                c.u2(phi, lambda, q);
+            }
+            "u3" => {
+                expect_arity(&toks, 5).map_err(&at)?;
+                let theta = parse_angle(toks[1]).map_err(&at)?;
+                let phi = parse_angle(toks[2]).map_err(&at)?;
+                let lambda = parse_angle(toks[3]).map_err(&at)?;
+                let q = parse_qubit(&toks, 4, n).map_err(&at)?;
+                c.u3(theta, phi, lambda, q);
             }
             "cnot" | "cz" => {
                 expect_arity(&toks, 3).map_err(&at)?;

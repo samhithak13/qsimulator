@@ -60,6 +60,16 @@ fn all_two_qubit_forms_parse() {
 }
 
 #[test]
+fn parses_u2_and_u3() {
+    // u3(pi,0,pi) = X and u2(0,pi) = H.
+    let prog = program::parse("qubits 2\nu3 pi 0 pi 0\nu2 0 pi 1\n").expect("should parse");
+    let state = prog.circuit.run();
+    // qubit 0 flipped to |1>; qubit 1 in equal superposition.
+    assert_relative_eq!(state.probability(0b01), 0.5, epsilon = 1e-12);
+    assert_relative_eq!(state.probability(0b11), 0.5, epsilon = 1e-12);
+}
+
+#[test]
 fn parses_sdg_tdg_and_phase() {
     // x, then t; t; sdg; s -> back to phase +1 (identity on |1>); p(pi) = Z.
     let prog = program::parse("qubits 1\nx 0\nsdg 0\ns 0\np pi 0\n").expect("should parse");

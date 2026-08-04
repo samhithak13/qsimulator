@@ -28,6 +28,8 @@ fn round_trips_a_mixed_circuit() {
         .sdg(0)
         .tdg(1)
         .p(0.9, 2)
+        .u2(0.3, 1.2, 0)
+        .u3(0.5, -0.6, 0.7, 1)
         .rx(0.7, 0)
         .ry(1.1, 1)
         .rz(-0.4, 2)
@@ -70,6 +72,18 @@ fn export_is_idempotent_through_parse() {
     let once = qasm::parse(src).unwrap().to_qasm().unwrap();
     let twice = qasm::parse(&once).unwrap().to_qasm().unwrap();
     assert_eq!(once, twice);
+}
+
+/// u3 exports with all three angles and round-trips exactly.
+#[test]
+fn u3_exports_with_three_angles() {
+    let mut c = Circuit::new(1);
+    c.u3(0.5, -0.6, 0.7, 0);
+    let q = c.to_qasm().unwrap();
+    assert!(q.contains("u3(0.5,-0.6,0.7) q[0];"), "{q}");
+
+    let reimported = qasm::parse(&q).unwrap();
+    assert_same_probs(&reimported.run(), &c.run());
 }
 
 /// The phase gate exports as OpenQASM `u1` and round-trips.

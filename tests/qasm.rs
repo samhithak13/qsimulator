@@ -85,6 +85,28 @@ fn imports_sdg_tdg_and_u1_phase() {
 }
 
 #[test]
+fn imports_u2_and_u3() {
+    // u3(pi,0,pi) = X, so on |0> gives |1>.
+    let s1 = qasm::parse("qreg q[1];\nu3(pi,0,pi) q[0];\n")
+        .expect("should parse")
+        .run();
+    assert_relative_eq!(s1.probability(1), 1.0, epsilon = 1e-12);
+
+    // u2(0,pi) = H, so on |0> gives an equal superposition.
+    let s2 = qasm::parse("qreg q[1];\nu2(0,pi) q[0];\n")
+        .expect("should parse")
+        .run();
+    assert_relative_eq!(s2.probability(0), 0.5, epsilon = 1e-12);
+    assert_relative_eq!(s2.probability(1), 0.5, epsilon = 1e-12);
+}
+
+#[test]
+fn error_u3_wrong_angle_count() {
+    let err = qasm::parse("qreg q[1];\nu3(pi,0) q[0];\n").unwrap_err();
+    assert!(err.contains("3 angle(s)"), "{err}");
+}
+
+#[test]
 fn imports_cz_and_swap() {
     let src = "qreg q[2];\nx q[0];\nswap q[0],q[1];\ncz q[0],q[1];\n";
     let imported = qasm::parse(src).expect("should parse").run();
@@ -119,8 +141,8 @@ qreg q[1]; /* inline */ x q[0]; // trailing
 
 #[test]
 fn error_unsupported_gate() {
-    let err = qasm::parse("qreg q[1];\nu3(0,0,0) q[0];\n").unwrap_err();
-    assert!(err.contains("unsupported gate `u3`"), "{err}");
+    let err = qasm::parse("qreg q[1];\nsx q[0];\n").unwrap_err();
+    assert!(err.contains("unsupported gate `sx`"), "{err}");
 }
 
 #[test]

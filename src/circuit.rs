@@ -13,15 +13,16 @@ type Gate = [[Complex64; 2]; 2];
 ///
 /// Each gate-bearing variant carries a short `label` (e.g. `"H"`, `"RX"`)
 /// used for diagram rendering and QASM export; it never affects execution.
-/// `Single` additionally records a `param` (the angle) for rotation gates so
-/// that export is lossless; it is `None` for non-parametric gates.
+/// `Single` additionally records the gate's angle `params` (empty for
+/// non-parametric gates, one for rotations/phase, up to three for `u3`) so
+/// that export is lossless.
 #[derive(Debug, Clone)]
 enum Op {
     Single {
         gate: Gate,
         target: usize,
         label: &'static str,
-        param: Option<f64>,
+        params: Vec<f64>,
     },
     Controlled {
         gate: Gate,
@@ -62,7 +63,7 @@ impl Circuit {
             gate: gates::h(),
             target,
             label: "H",
-            param: None,
+            params: Vec::new(),
         });
         self
     }
@@ -72,7 +73,7 @@ impl Circuit {
             gate: gates::x(),
             target,
             label: "X",
-            param: None,
+            params: Vec::new(),
         });
         self
     }
@@ -82,7 +83,7 @@ impl Circuit {
             gate: gates::z(),
             target,
             label: "Z",
-            param: None,
+            params: Vec::new(),
         });
         self
     }
@@ -92,7 +93,7 @@ impl Circuit {
             gate: gates::y(),
             target,
             label: "Y",
-            param: None,
+            params: Vec::new(),
         });
         self
     }
@@ -103,7 +104,7 @@ impl Circuit {
             gate: gates::s(),
             target,
             label: "S",
-            param: None,
+            params: Vec::new(),
         });
         self
     }
@@ -114,7 +115,7 @@ impl Circuit {
             gate: gates::t(),
             target,
             label: "T",
-            param: None,
+            params: Vec::new(),
         });
         self
     }
@@ -125,7 +126,7 @@ impl Circuit {
             gate: gates::sdg(),
             target,
             label: "SDG",
-            param: None,
+            params: Vec::new(),
         });
         self
     }
@@ -136,7 +137,7 @@ impl Circuit {
             gate: gates::tdg(),
             target,
             label: "TDG",
-            param: None,
+            params: Vec::new(),
         });
         self
     }
@@ -150,7 +151,31 @@ impl Circuit {
             gate: gates::p(lambda),
             target,
             label: "P",
-            param: Some(lambda),
+            params: vec![lambda],
+        });
+        self
+    }
+
+    /// General single-qubit gate U3(theta, phi, lambda) on `target`
+    /// (the OpenQASM `u3`).
+    pub fn u3(&mut self, theta: f64, phi: f64, lambda: f64, target: usize) -> &mut Self {
+        self.ops.push(Op::Single {
+            gate: gates::u3(theta, phi, lambda),
+            target,
+            label: "U3",
+            params: vec![theta, phi, lambda],
+        });
+        self
+    }
+
+    /// Single-qubit gate U2(phi, lambda) = U3(pi/2, phi, lambda) on `target`
+    /// (the OpenQASM `u2`).
+    pub fn u2(&mut self, phi: f64, lambda: f64, target: usize) -> &mut Self {
+        self.ops.push(Op::Single {
+            gate: gates::u2(phi, lambda),
+            target,
+            label: "U2",
+            params: vec![phi, lambda],
         });
         self
     }
@@ -161,7 +186,7 @@ impl Circuit {
             gate: gates::rx(theta),
             target,
             label: "RX",
-            param: Some(theta),
+            params: vec![theta],
         });
         self
     }
@@ -172,7 +197,7 @@ impl Circuit {
             gate: gates::ry(theta),
             target,
             label: "RY",
-            param: Some(theta),
+            params: vec![theta],
         });
         self
     }
@@ -183,7 +208,7 @@ impl Circuit {
             gate: gates::rz(theta),
             target,
             label: "RZ",
-            param: Some(theta),
+            params: vec![theta],
         });
         self
     }
@@ -341,7 +366,7 @@ impl Circuit {
                 Op::Single {
                     target,
                     label,
-                    param,
+                    params,
                     ..
                 } => {
                     let name = match *label {
@@ -354,15 +379,14 @@ impl Circuit {
                         "SDG" => "sdg",
                         "TDG" => "tdg",
                         "P" => "u1",
+                        "U2" => "u2",
+                        "U3" => "u3",
                         "RX" => "rx",
                         "RY" => "ry",
                         "RZ" => "rz",
                         other => return Err(format!("cannot export single-qubit gate `{other}`")),
                     };
-                    match param {
-                        Some(theta) => out.push_str(&format!("{name}({theta}) q[{target}];\n")),
-                        None => out.push_str(&format!("{name} q[{target}];\n")),
-                    }
+                    out.push_str(&format!("{name}{} q[{target}];\n", format_params(params)));
                 }
                 Op::Controlled {
                     control,
@@ -498,6 +522,21 @@ impl Circuit {
         }
         lines.join("\n")
     }
+}
+
+/// Format gate angle parameters as an OpenQASM parameter list: `""` for none,
+/// `"(θ)"` for one, `"(θ,φ,λ)"` for several. Angles use full `f64` precision
+/// so exported programs round-trip exactly.
+fn format_params(params: &[f64]) -> String {
+    if params.is_empty() {
+        return String::new();
+    }
+    let joined = params
+        .iter()
+        .map(|p| p.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+    format!("({joined})")
 }
 
 /// Mark the rows strictly between the outermost involved qubits (that are not
