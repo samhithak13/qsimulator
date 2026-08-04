@@ -11,6 +11,7 @@
 pub mod circuit;
 pub mod gates;
 pub mod program;
+pub mod qasm;
 pub mod rng;
 pub mod state;
 

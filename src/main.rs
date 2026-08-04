@@ -4,8 +4,8 @@
 //! (or `-` for stdin), parses and runs it — see `qsimulator --help` or the
 //! `qsimulator::program` module for the format.
 
-use qsimulator::program::{self, Program};
-use qsimulator::Circuit;
+use qsimulator::program::{self, SampleSpec};
+use qsimulator::{qasm, Circuit};
 use std::io::Read;
 use std::process::ExitCode;
 
@@ -28,9 +28,17 @@ fn main() -> ExitCode {
                     return ExitCode::FAILURE;
                 }
             };
-            match program::parse(&src) {
-                Ok(prog) => {
-                    run_program(&prog);
+            // Pick the parser: OpenQASM by `.qasm` extension or an `OPENQASM`
+            // header, otherwise the native text program format.
+            let is_qasm = path.ends_with(".qasm") || src.trim_start().starts_with("OPENQASM");
+            let parsed = if is_qasm {
+                qasm::parse(&src).map(|circuit| (circuit, None))
+            } else {
+                program::parse(&src).map(|prog| (prog.circuit, prog.sample))
+            };
+            match parsed {
+                Ok((circuit, sample)) => {
+                    run_circuit(&circuit, sample);
                     ExitCode::SUCCESS
                 }
                 Err(e) => {
@@ -58,18 +66,18 @@ fn read_source(path: &str) -> std::io::Result<String> {
     }
 }
 
-/// Print the circuit diagram, the final-state probabilities, and (if the
-/// program had a `sample` directive) the sampled histogram.
-fn run_program(prog: &Program) {
+/// Print the circuit diagram, the final-state probabilities, and (if a
+/// `sample` directive was present) the sampled histogram.
+fn run_circuit(circuit: &Circuit, sample: Option<SampleSpec>) {
     println!("Circuit:");
-    println!("{}\n", prog.circuit);
+    println!("{circuit}\n");
 
-    let state = prog.circuit.run();
+    let state = circuit.run();
     println!("Final-state probabilities:");
     print_probabilities(&state);
 
-    if let Some(spec) = prog.sample {
-        let histogram = prog.circuit.sample(spec.shots, spec.seed);
+    if let Some(spec) = sample {
+        let histogram = circuit.sample(spec.shots, spec.seed);
         println!("\nSampling {} shots (seed = {}):", spec.shots, spec.seed);
         let width = state.n_qubits();
         for outcome in 0..(1usize << width) {
@@ -122,9 +130,12 @@ fn print_help() {
 
 USAGE:
     qsimulator                 Run the built-in Bell-state demo
-    qsimulator <FILE>          Parse and run a program file
+    qsimulator <FILE>          Parse and run a program file (.qasm = OpenQASM)
     qsimulator -               Read a program from stdin
     qsimulator --help          Show this help
+
+An input is treated as OpenQASM 2.0 if it ends in `.qasm` or begins with an
+`OPENQASM` header (see programs/bell.qasm); otherwise the native format below.
 
 PROGRAM FORMAT (one instruction per line; `#` starts a comment):
     qubits N                   Declare the register size (must come first)

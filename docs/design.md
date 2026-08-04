@@ -64,8 +64,8 @@ extra context. Update it as features land.
 ### What works today
 
 Everything below is implemented, tested, and pushed to `main`. CI (fmt +
-clippy `-D warnings` + build + test) is green. **60 tests** (59 unit +
-integration across 11 binaries, plus a doctest).
+clippy `-D warnings` + build + test) is green. **73 tests** (72 unit +
+integration across 12 binaries, plus a doctest).
 
 | Area | API | Status |
 |---|---|---|
@@ -83,7 +83,8 @@ integration across 11 binaries, plus a doctest).
 | Circuit other builders | `swap, toffoli` (toffoli now delegates to `mcx`) | ✅ |
 | Circuit rendering | `Circuit::diagram() -> String` + `Display` (ASCII diagram) | ✅ |
 | Text program format | `program::parse(&str) -> Result<Program, String>` | ✅ |
-| CLI | `qsimulator [FILE\|-\|--help]` (demo, run a program, stdin) | ✅ |
+| OpenQASM 2.0 import | `qasm::parse(&str) -> Result<Circuit, String>` (subset) | ✅ |
+| CLI | `qsimulator [FILE\|-\|--help]` (demo, program, `.qasm`, stdin) | ✅ |
 
 ### File map
 
@@ -93,14 +94,18 @@ integration across 11 binaries, plus a doctest).
 - `src/circuit.rs` — `Op` enum (`Single`, `Controlled`, `Swap`,
   `MultiControlled`), the `Circuit` builder, `run`, and `sample`.
 - `src/rng.rs` — the RNG and its unit tests.
-- `src/program.rs` — text program parser (`parse`, `Program`, `SampleSpec`).
+- `src/program.rs` — text program parser (`parse`, `Program`, `SampleSpec`);
+  `parse_angle` is `pub(crate)` and shared with the QASM importer.
+- `src/qasm.rs` — OpenQASM 2.0 subset importer (`parse -> Circuit`).
 - `src/lib.rs` — module wiring and re-exports (`Circuit`, `State`, `Rng`).
-- `src/main.rs` — the CLI: built-in demo, or parse+run a program file/stdin.
-- `programs/ghz.qsim` — sample program in the text format.
+- `src/main.rs` — the CLI: built-in demo, or parse+run a program/`.qasm`/stdin
+  (dispatches to `qasm` by `.qasm` extension or `OPENQASM` header).
+- `programs/ghz.qsim` — sample text program; `programs/bell.qasm` — sample QASM.
 - `tests/` — `bell_state.rs`, `measurement.rs`, `rotations.rs`, `swap.rs`,
   `toffoli.rs`, `single_qubit_builders.rs` (y/s/t), `controlled_builders.rs`
   (cz/cu/mcx/mcu), `diagram.rs` (ASCII rendering), `program.rs` (parser),
-  `ghz.rs` (3- and 4-qubit GHZ probabilities + sampling).
+  `ghz.rs` (3- and 4-qubit GHZ probabilities + sampling), `qasm.rs`
+  (OpenQASM import, oracle-checked against the builder API).
 
 Note: `Op` variants now carry a `label: &'static str` used only by
 `diagram()`; it never affects execution (`run` ignores it). New gate
@@ -155,15 +160,25 @@ checks above must pass before committing.
   GHZ probabilities and sampling (only 000…/111… outcomes). Salvaged from the
   superseded PR #2 branch, which was an older reimplementation of builders/
   Display that `main` already had.
+- ✅ **OpenQASM 2.0 import** — `src/qasm.rs` parses a hand-written subset
+  (header/include, one or more `qreg`, the core gate set incl. `cx/cz/ccx/
+  swap` and `rx/ry/rz`, `//` and `/* */` comments; `creg/barrier/measure`
+  ignored; unsupported features error out). Wired into the CLI by `.qasm`
+  extension / `OPENQASM` header. Oracle-tested in `tests/qasm.rs` against the
+  equivalent builder circuits; sample at `programs/bell.qasm`.
 
 ### Suggested next steps (v0.3, not yet started)
 
 Roughly in priority order; none of these exist yet:
 
-1. **Performance (v0.3)** — in-place kernels already; consider benchmarks
-   and a sparse fast path only after the above.
-2. **OpenQASM-ish import/export** — the text format is bespoke; a small
-   OpenQASM 2 subset importer would improve interop (larger effort).
+1. **Benchmarks** — a committed harness timing gate application across qubit
+   counts (state a fixed protocol; no perf claims without it). Only meaningful
+   alongside real optimization work (blocked/branch-free kernel, OpenMP-style
+   parallelism, or a sparse fast path).
+2. **QASM export** — the importer is one-way; a `Circuit -> OpenQASM` emitter
+   would round-trip and improve interop.
+3. **More gates in QASM/import** — `sdg`, `tdg`, `u1/u2/u3`, and controlled
+   rotations are currently rejected; add as the gate set grows.
 
 When adding a gate: add the matrix in `gates.rs`, a builder in `circuit.rs`
 (+ `Op` variant and `run` arm if it needs new state machinery), and both a

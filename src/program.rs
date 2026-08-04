@@ -171,8 +171,10 @@ fn parse_qubit(toks: &[&str], idx: usize, n: usize) -> Result<usize, String> {
 }
 
 /// Parse an angle: a plain float, or a symbolic multiple of pi such as `pi`,
-/// `pi/2`, `-pi/4`, `2pi`, or `2*pi`.
-fn parse_angle(s: &str) -> Result<f64, String> {
+/// `pi/2`, `-pi/4`, `2pi`, `2*pi`, or `0.5*pi`.
+///
+/// Shared with the OpenQASM importer, which uses the same angle syntax.
+pub(crate) fn parse_angle(s: &str) -> Result<f64, String> {
     if let Ok(v) = s.parse::<f64>() {
         return Ok(v);
     }

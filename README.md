@@ -52,6 +52,9 @@ cargo run
 # Run a circuit described in a text program (see programs/ghz.qsim)
 cargo run -- programs/ghz.qsim
 
+# Import and run an OpenQASM 2.0 file (see programs/bell.qasm)
+cargo run -- programs/bell.qasm
+
 # Read a program from stdin, or show the program format
 printf 'qubits 1\nx 0\n' | cargo run -- -
 cargo run -- --help
@@ -77,6 +80,25 @@ Supported: `qubits N`; `h|x|y|z|s|t Q`; `rx|ry|rz THETA Q` (THETA is a float
 or a symbolic multiple of pi like `pi/2`, `-pi/4`, `2pi`); `cnot|cz C T`;
 `swap A B`; `toffoli C1 C2 T`; and an optional `sample SHOTS SEED`.
 
+### OpenQASM 2.0 import
+
+A file ending in `.qasm` (or starting with an `OPENQASM` header) is parsed as
+an OpenQASM 2.0 subset — enough for hand-written textbook circuits:
+
+```text
+OPENQASM 2.0;
+include "qelib1.inc";
+qreg q[2];
+h q[0];
+cx q[0],q[1];
+```
+
+Supported gates: `x y z h s t`, `rx/ry/rz(theta)`, `cx`, `cz`, `swap`, `ccx`.
+Multiple `qreg`s map into a single flat qubit space in declaration order;
+`creg`, `barrier`, and `measure` are accepted and ignored; unsupported
+features (custom `gate`, `if`, `reset`, …) are reported rather than
+mis-simulated.
+
 ## Roadmap
 
 Milestones are tracked in the repository issues. High level:
@@ -86,8 +108,8 @@ Milestones are tracked in the repository issues. High level:
    sampling, single-qubit + full-register collapse).
 2. **v0.2 — Ergonomics**: more gates (rotations, SWAP, Toffoli ✅), circuit
    diagram printing ✅, richer CLI ✅ (text program format).
-3. **v0.3 — Performance**: in-place gate application, sparse fast paths,
-   benchmarks.
+3. **v0.3 — Interop & performance**: OpenQASM 2.0 import ✅; benchmarks,
+   sparse fast paths (planned).
 
 ## Contributing
 
