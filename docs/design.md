@@ -64,8 +64,8 @@ extra context. Update it as features land.
 ### What works today
 
 Everything below is implemented, tested, and pushed to `main`. CI (fmt +
-clippy `-D warnings` + build + test) is green. **73 tests** (72 unit +
-integration across 12 binaries, plus a doctest).
+clippy `-D warnings` + build + test) is green. **81 tests** (79 unit +
+integration across 13 binaries, plus 2 doctests).
 
 | Area | API | Status |
 |---|---|---|
@@ -84,7 +84,8 @@ integration across 12 binaries, plus a doctest).
 | Circuit rendering | `Circuit::diagram() -> String` + `Display` (ASCII diagram) | ✅ |
 | Text program format | `program::parse(&str) -> Result<Program, String>` | ✅ |
 | OpenQASM 2.0 import | `qasm::parse(&str) -> Result<Circuit, String>` (subset) | ✅ |
-| CLI | `qsimulator [FILE\|-\|--help]` (demo, program, `.qasm`, stdin) | ✅ |
+| OpenQASM 2.0 export | `Circuit::to_qasm() -> Result<String, String>` | ✅ |
+| CLI | `qsimulator [FILE\|-\|--emit-qasm FILE\|--help]` | ✅ |
 
 ### File map
 
@@ -105,7 +106,8 @@ integration across 12 binaries, plus a doctest).
   `toffoli.rs`, `single_qubit_builders.rs` (y/s/t), `controlled_builders.rs`
   (cz/cu/mcx/mcu), `diagram.rs` (ASCII rendering), `program.rs` (parser),
   `ghz.rs` (3- and 4-qubit GHZ probabilities + sampling), `qasm.rs`
-  (OpenQASM import, oracle-checked against the builder API).
+  (OpenQASM import, oracle-checked against the builder API), `qasm_export.rs`
+  (export + round-trip through import).
 
 Note: `Op` variants now carry a `label: &'static str` used only by
 `diagram()`; it never affects execution (`run` ignores it). New gate
@@ -167,6 +169,13 @@ checks above must pass before committing.
   extension / `OPENQASM` header. Oracle-tested in `tests/qasm.rs` against the
   equivalent builder circuits; sample at `programs/bell.qasm`.
 
+- ✅ **OpenQASM 2.0 export** — `Circuit::to_qasm()` emits a circuit back to
+  OpenQASM (header + `qreg` + one gate per line), lossless for the supported
+  subset and round-tripping through `qasm::parse` (rotation angles at full
+  `f64` precision). Gates outside the subset (arbitrary controlled-U, C³X)
+  return an export error. To support it, `Op::Single` now records `param`
+  (rotation angle). CLI: `--emit-qasm`. Tested in `tests/qasm_export.rs`.
+
 ### Suggested next steps (v0.3, not yet started)
 
 Roughly in priority order; none of these exist yet:
@@ -175,10 +184,11 @@ Roughly in priority order; none of these exist yet:
    counts (state a fixed protocol; no perf claims without it). Only meaningful
    alongside real optimization work (blocked/branch-free kernel, OpenMP-style
    parallelism, or a sparse fast path).
-2. **QASM export** — the importer is one-way; a `Circuit -> OpenQASM` emitter
-   would round-trip and improve interop.
-3. **More gates in QASM/import** — `sdg`, `tdg`, `u1/u2/u3`, and controlled
-   rotations are currently rejected; add as the gate set grows.
+2. **More gates** — `sdg`, `tdg`, `u1/u2/u3`, controlled rotations: add to
+   `gates.rs` + builders + the QASM import/export maps together.
+3. **QASM `gate` sugar / registers by name in export** — export currently uses
+   a single flat `qreg q[n]`; preserving original register names would be
+   nicer for humans (cosmetic).
 
 When adding a gate: add the matrix in `gates.rs`, a builder in `circuit.rs`
 (+ `Op` variant and `run` arm if it needs new state machinery), and both a

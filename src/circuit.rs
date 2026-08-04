@@ -12,13 +12,16 @@ type Gate = [[Complex64; 2]; 2];
 /// A single instruction in a circuit.
 ///
 /// Each gate-bearing variant carries a short `label` (e.g. `"H"`, `"RX"`)
-/// used only for diagram rendering; it never affects execution.
+/// used for diagram rendering and QASM export; it never affects execution.
+/// `Single` additionally records a `param` (the angle) for rotation gates so
+/// that export is lossless; it is `None` for non-parametric gates.
 #[derive(Debug, Clone)]
 enum Op {
     Single {
         gate: Gate,
         target: usize,
         label: &'static str,
+        param: Option<f64>,
     },
     Controlled {
         gate: Gate,
@@ -59,6 +62,7 @@ impl Circuit {
             gate: gates::h(),
             target,
             label: "H",
+            param: None,
         });
         self
     }
@@ -68,6 +72,7 @@ impl Circuit {
             gate: gates::x(),
             target,
             label: "X",
+            param: None,
         });
         self
     }
@@ -77,6 +82,7 @@ impl Circuit {
             gate: gates::z(),
             target,
             label: "Z",
+            param: None,
         });
         self
     }
@@ -86,6 +92,7 @@ impl Circuit {
             gate: gates::y(),
             target,
             label: "Y",
+            param: None,
         });
         self
     }
@@ -96,6 +103,7 @@ impl Circuit {
             gate: gates::s(),
             target,
             label: "S",
+            param: None,
         });
         self
     }
@@ -106,6 +114,7 @@ impl Circuit {
             gate: gates::t(),
             target,
             label: "T",
+            param: None,
         });
         self
     }
@@ -116,6 +125,7 @@ impl Circuit {
             gate: gates::rx(theta),
             target,
             label: "RX",
+            param: Some(theta),
         });
         self
     }
@@ -126,6 +136,7 @@ impl Circuit {
             gate: gates::ry(theta),
             target,
             label: "RY",
+            param: Some(theta),
         });
         self
     }
@@ -136,6 +147,7 @@ impl Circuit {
             gate: gates::rz(theta),
             target,
             label: "RZ",
+            param: Some(theta),
         });
         self
     }
@@ -260,6 +272,102 @@ impl Circuit {
             *histogram.entry(outcome).or_insert(0) += 1;
         }
         histogram
+    }
+
+    /// Export the circuit as an OpenQASM 2.0 program string.
+    ///
+    /// Emits the standard header, a single `qreg q[n]`, and one gate per line.
+    /// The output round-trips through [`qasm::parse`](crate::qasm::parse):
+    /// re-importing it yields an equivalent circuit. Rotation angles are
+    /// written at full `f64` precision so the round trip is exact.
+    ///
+    /// Returns an error for gates the OpenQASM subset cannot express directly:
+    /// an arbitrary controlled-U ([`cu`](Circuit::cu)/[`mcu`](Circuit::mcu)),
+    /// or a multi-controlled-X with a control count other than two (only
+    /// [`toffoli`](Circuit::toffoli)/`ccx` is representable).
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use qsimulator::Circuit;
+    /// let mut c = Circuit::new(2);
+    /// c.h(0).cnot(0, 1);
+    /// let qasm = c.to_qasm().unwrap();
+    /// assert!(qasm.starts_with("OPENQASM 2.0;"));
+    /// assert!(qasm.contains("cx q[0],q[1];"));
+    /// ```
+    pub fn to_qasm(&self) -> Result<String, String> {
+        let mut out = String::from("OPENQASM 2.0;\ninclude \"qelib1.inc\";\n");
+        out.push_str(&format!("qreg q[{}];\n", self.n_qubits));
+
+        for op in &self.ops {
+            match op {
+                Op::Single {
+                    target,
+                    label,
+                    param,
+                    ..
+                } => {
+                    let name = match *label {
+                        "H" => "h",
+                        "X" => "x",
+                        "Y" => "y",
+                        "Z" => "z",
+                        "S" => "s",
+                        "T" => "t",
+                        "RX" => "rx",
+                        "RY" => "ry",
+                        "RZ" => "rz",
+                        other => return Err(format!("cannot export single-qubit gate `{other}`")),
+                    };
+                    match param {
+                        Some(theta) => out.push_str(&format!("{name}({theta}) q[{target}];\n")),
+                        None => out.push_str(&format!("{name} q[{target}];\n")),
+                    }
+                }
+                Op::Controlled {
+                    control,
+                    target,
+                    label,
+                    ..
+                } => {
+                    let name = match *label {
+                        "X" => "cx",
+                        "Z" => "cz",
+                        _ => {
+                            return Err(
+                                "cannot export an arbitrary controlled-U (cu) to OpenQASM".into()
+                            )
+                        }
+                    };
+                    out.push_str(&format!("{name} q[{control}],q[{target}];\n"));
+                }
+                Op::Swap { a, b } => {
+                    out.push_str(&format!("swap q[{a}],q[{b}];\n"));
+                }
+                Op::MultiControlled {
+                    controls,
+                    target,
+                    label,
+                    ..
+                } => {
+                    if *label != "X" {
+                        return Err("cannot export a multi-controlled-U (mcu) to OpenQASM".into());
+                    }
+                    if controls.len() != 2 {
+                        return Err(format!(
+                            "cannot export a multi-controlled-X with {} controls (only 2 = ccx)",
+                            controls.len()
+                        ));
+                    }
+                    out.push_str(&format!(
+                        "ccx q[{}],q[{}],q[{target}];\n",
+                        controls[0], controls[1]
+                    ));
+                }
+            }
+        }
+        Ok(out)
     }
 
     /// Render the circuit as an ASCII diagram.

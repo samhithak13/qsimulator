@@ -20,38 +20,51 @@ fn main() -> ExitCode {
             print_help();
             ExitCode::SUCCESS
         }
-        [path] => {
-            let src = match read_source(path) {
-                Ok(s) => s,
-                Err(e) => {
-                    eprintln!("error: cannot read {path}: {e}");
-                    return ExitCode::FAILURE;
-                }
-            };
-            // Pick the parser: OpenQASM by `.qasm` extension or an `OPENQASM`
-            // header, otherwise the native text program format.
-            let is_qasm = path.ends_with(".qasm") || src.trim_start().starts_with("OPENQASM");
-            let parsed = if is_qasm {
-                qasm::parse(&src).map(|circuit| (circuit, None))
-            } else {
-                program::parse(&src).map(|prog| (prog.circuit, prog.sample))
-            };
-            match parsed {
-                Ok((circuit, sample)) => {
-                    run_circuit(&circuit, sample);
+        // `--emit-qasm FILE`: parse the input and print it back as OpenQASM.
+        [flag, path] if flag == "--emit-qasm" => match load_circuit(path) {
+            Ok((circuit, _sample)) => match circuit.to_qasm() {
+                Ok(qasm) => {
+                    print!("{qasm}");
                     ExitCode::SUCCESS
                 }
                 Err(e) => {
                     eprintln!("error: {e}");
                     ExitCode::FAILURE
                 }
+            },
+            Err(e) => {
+                eprintln!("error: {e}");
+                ExitCode::FAILURE
             }
-        }
+        },
+        [path] => match load_circuit(path) {
+            Ok((circuit, sample)) => {
+                run_circuit(&circuit, sample);
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("error: {e}");
+                ExitCode::FAILURE
+            }
+        },
         _ => {
-            eprintln!("error: too many arguments; expected a program file, `-`, or none");
+            eprintln!("error: unexpected arguments; expected a program file, `-`, or none");
             eprintln!("try `qsimulator --help`");
             ExitCode::from(2)
         }
+    }
+}
+
+/// Read a program from `path` (or stdin when `path` is `-`) and parse it into a
+/// circuit, choosing the OpenQASM importer by `.qasm` extension or `OPENQASM`
+/// header, otherwise the native text program format.
+fn load_circuit(path: &str) -> Result<(Circuit, Option<SampleSpec>), String> {
+    let src = read_source(path).map_err(|e| format!("cannot read {path}: {e}"))?;
+    let is_qasm = path.ends_with(".qasm") || src.trim_start().starts_with("OPENQASM");
+    if is_qasm {
+        qasm::parse(&src).map(|circuit| (circuit, None))
+    } else {
+        program::parse(&src).map(|prog| (prog.circuit, prog.sample))
     }
 }
 
@@ -132,6 +145,7 @@ USAGE:
     qsimulator                 Run the built-in Bell-state demo
     qsimulator <FILE>          Parse and run a program file (.qasm = OpenQASM)
     qsimulator -               Read a program from stdin
+    qsimulator --emit-qasm <FILE>  Print the circuit as OpenQASM 2.0
     qsimulator --help          Show this help
 
 An input is treated as OpenQASM 2.0 if it ends in `.qasm` or begins with an

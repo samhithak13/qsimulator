@@ -99,6 +99,11 @@ Multiple `qreg`s map into a single flat qubit space in declaration order;
 features (custom `gate`, `if`, `reset`, …) are reported rather than
 mis-simulated.
 
+Export goes the other way — `Circuit::to_qasm()` (and `qsimulator --emit-qasm
+<FILE>`) writes a circuit back out as OpenQASM 2.0. Any circuit using only the
+supported gates round-trips exactly through import; gates outside the subset
+(arbitrary controlled-U, C³X, …) are reported as an export error.
+
 ## Roadmap
 
 Milestones are tracked in the repository issues. High level:
