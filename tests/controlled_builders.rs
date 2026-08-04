@@ -1,4 +1,5 @@
-//! Integration tests for the controlled builders: `cz`, `cu`, `mcx`, `mcu`.
+//! Integration tests for the controlled builders: `cz`, `cu`, `mcx`, `mcu`,
+//! and the controlled rotations `crz` / `cp`.
 
 use approx::assert_relative_eq;
 use qsimulator::{gates, Circuit};
@@ -17,6 +18,44 @@ fn cz_phases_the_11_branch() {
     assert_relative_eq!(state.amplitudes()[0b01].re, s, epsilon = 1e-12);
     assert_relative_eq!(state.amplitudes()[0b10].re, s, epsilon = 1e-12);
     assert_relative_eq!(state.amplitudes()[0b11].re, -s, epsilon = 1e-12);
+}
+
+/// Controlled phase cp(λ) multiplies the |11> branch by e^{iλ} and leaves the
+/// other branches alone; cp(π) matches CZ.
+#[test]
+fn cp_phases_the_11_branch() {
+    use std::f64::consts::PI;
+    let mut circuit = Circuit::new(2);
+    circuit.x(0).x(1).cp(PI / 2.0, 0, 1);
+    let state = circuit.run();
+    // e^{i·π/2} = i on the |11> amplitude; probability unchanged.
+    assert_relative_eq!(state.probability(0b11), 1.0, epsilon = 1e-12);
+    assert_relative_eq!(state.amplitudes()[0b11].re, 0.0, epsilon = 1e-12);
+    assert_relative_eq!(state.amplitudes()[0b11].im, 1.0, epsilon = 1e-12);
+
+    // cp(π) == cz on the same input.
+    let mut viacz = Circuit::new(2);
+    viacz.x(0).x(1).cz(0, 1);
+    let mut viacp = Circuit::new(2);
+    viacp.x(0).x(1).cp(PI, 0, 1);
+    assert_relative_eq!(
+        (viacz.run().amplitudes()[0b11] - viacp.run().amplitudes()[0b11]).norm(),
+        0.0,
+        epsilon = 1e-12
+    );
+}
+
+/// crz only acts when the control is set: with the control at |0>, crz is a
+/// no-op on the target.
+#[test]
+fn crz_requires_control() {
+    let mut circuit = Circuit::new(2);
+    // control = qubit 0 = |0>; target = qubit 1 = |1>.
+    circuit.x(1).crz(1.3, 0, 1);
+    let state = circuit.run();
+    // rz not applied, so the |1> amplitude on qubit 1 stays real +1.
+    assert_relative_eq!(state.amplitudes()[0b10].re, 1.0, epsilon = 1e-12);
+    assert_relative_eq!(state.amplitudes()[0b10].im, 0.0, epsilon = 1e-12);
 }
 
 /// CZ is symmetric: cz(0, 1) and cz(1, 0) produce the same state.

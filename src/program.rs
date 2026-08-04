@@ -14,10 +14,10 @@
 //!
 //! Supported instructions: `qubits N`; single-qubit `h/x/y/z/s/t/sdg/tdg Q`;
 //! rotations `rx/ry/rz THETA Q`, phase `p THETA Q`, and the general
-//! `u2 PHI LAMBDA Q` / `u3 THETA PHI LAMBDA Q`; two-qubit `cnot/cz C T` and
-//! `swap A B`; `toffoli C1 C2 T`; and a terminal `sample SHOTS SEED`. Angles
-//! are a plain float or a symbolic multiple of pi such as `pi`, `pi/2`,
-//! `-pi/4`, or `2pi`.
+//! `u2 PHI LAMBDA Q` / `u3 THETA PHI LAMBDA Q`; two-qubit `cnot/cz C T`,
+//! `crz/cp THETA C T`, and `swap A B`; `toffoli C1 C2 T`; and a terminal
+//! `sample SHOTS SEED`. Angles are a plain float or a symbolic multiple of pi
+//! such as `pi`, `pi/2`, `-pi/4`, or `2pi`.
 
 use crate::Circuit;
 use std::f64::consts::PI;
@@ -125,6 +125,19 @@ pub fn parse(src: &str) -> Result<Program, String> {
                 match cmd {
                     "cnot" => c.cnot(ctrl, tgt),
                     _ => c.cz(ctrl, tgt),
+                };
+            }
+            "crz" | "cp" => {
+                expect_arity(&toks, 4).map_err(&at)?;
+                let theta = parse_angle(toks[1]).map_err(&at)?;
+                let ctrl = parse_qubit(&toks, 2, n).map_err(&at)?;
+                let tgt = parse_qubit(&toks, 3, n).map_err(&at)?;
+                if ctrl == tgt {
+                    return Err(at("control and target must differ".into()));
+                }
+                match cmd {
+                    "crz" => c.crz(theta, ctrl, tgt),
+                    _ => c.cp(theta, ctrl, tgt),
                 };
             }
             "swap" => {

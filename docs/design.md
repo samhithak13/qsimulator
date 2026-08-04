@@ -64,7 +64,7 @@ extra context. Update it as features land.
 ### What works today
 
 Everything below is implemented, tested, and pushed to `main`. CI (fmt +
-clippy `-D warnings` + build + test) is green. **98 tests** (96 unit +
+clippy `-D warnings` + build + test) is green. **102 tests** (100 unit +
 integration across 13 binaries, plus 2 doctests).
 
 | Area | API | Status |
@@ -79,7 +79,7 @@ integration across 13 binaries, plus 2 doctests).
 | Sampling | `Circuit::sample(shots, seed) -> HashMap<usize, usize>` | ✅ |
 | RNG | `rng::Rng` (seedable xorshift64, SplitMix64 seeding) | ✅ |
 | Circuit single-qubit builders | `h,x,y,z,s,t,sdg,tdg,p,u2,u3,rx,ry,rz` | ✅ |
-| Circuit controlled builders | `cnot, cz, cu(gate,c,t), mcx(controls,t), mcu(gate,controls,t)` | ✅ |
+| Circuit controlled builders | `cnot, cz, crz, cp, cu(gate,c,t), mcx(controls,t), mcu(gate,controls,t)` | ✅ |
 | Circuit other builders | `swap, toffoli` (toffoli now delegates to `mcx`) | ✅ |
 | Circuit rendering | `Circuit::diagram() -> String` + `Display` (ASCII diagram) | ✅ |
 | Text program format | `program::parse(&str) -> Result<Program, String>` | ✅ |
@@ -185,19 +185,22 @@ checks above must pass before committing.
   `u2(φ,λ)`. Reshaped `Op::Single`'s param slot from `Option<f64>` to
   `params: Vec<f64>` (0–3 angles); export joins them via `format_params`. Full
   import/export/native-format support, oracle-tested.
+- ✅ **More gates (part 2b: controlled rotations)** — `crz(θ)` and controlled
+  phase `cp(λ)` (OpenQASM `cu1`). Added `params` to `Op::Controlled` mirroring
+  the `Op::Single` reshape; export emits `crz`/`cu1`. Full import/export/
+  native-format support, oracle-tested. The QASM subset is now `u2/u3/u1`,
+  `rx/ry/rz`, `sdg/tdg`, `cx/cz/crz/cu1/swap/ccx`.
 
 ### Suggested next steps (v0.3, not yet started)
 
 Roughly in priority order; none of these exist yet:
 
-1. **Controlled rotations** — `crz(θ)` and the controlled phase `cu1(λ)`/`cp`
-   (standard OpenQASM 2). Needs `params` on `Op::Controlled` (mirroring the
-   `Op::Single` reshape) plus labels so export can emit `crz`/`cu1`. Import +
-   export + native builder together.
-2. **Benchmarks** — a committed harness timing gate application across qubit
+1. **Benchmarks** — a committed harness timing gate application across qubit
    counts (state a fixed protocol; no perf claims without it). Only meaningful
    alongside real optimization work (blocked/branch-free kernel, OpenMP-style
    parallelism, or a sparse fast path).
+2. **`cu3` / arbitrary controlled-U in QASM** — export currently errors on
+   `cu`/`mcu`; a `cu3(θ,φ,λ)` emit + import would round-trip them.
 3. **Registers by name in export** — export currently uses a single flat
    `qreg q[n]`; preserving original register names would be nicer (cosmetic).
 

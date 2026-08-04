@@ -35,6 +35,8 @@ fn round_trips_a_mixed_circuit() {
         .rz(-0.4, 2)
         .cnot(0, 1)
         .cz(1, 2)
+        .crz(0.4, 0, 1)
+        .cp(1.3, 1, 2)
         .swap(0, 2)
         .toffoli(0, 1, 2);
 
@@ -81,6 +83,19 @@ fn u3_exports_with_three_angles() {
     c.u3(0.5, -0.6, 0.7, 0);
     let q = c.to_qasm().unwrap();
     assert!(q.contains("u3(0.5,-0.6,0.7) q[0];"), "{q}");
+
+    let reimported = qasm::parse(&q).unwrap();
+    assert_same_probs(&reimported.run(), &c.run());
+}
+
+/// Controlled rotations export as `crz` / `cu1` and round-trip.
+#[test]
+fn controlled_rotations_export() {
+    let mut c = Circuit::new(2);
+    c.crz(0.4, 0, 1).cp(1.3, 0, 1);
+    let q = c.to_qasm().unwrap();
+    assert!(q.contains("crz(0.4) q[0],q[1];"), "{q}");
+    assert!(q.contains("cu1(1.3) q[0],q[1];"), "{q}");
 
     let reimported = qasm::parse(&q).unwrap();
     assert_same_probs(&reimported.run(), &c.run());

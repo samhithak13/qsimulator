@@ -14,13 +14,14 @@
 //! - Gates: `x y z h s t sdg tdg` (1 qubit), `rx ry rz(theta)`, the phase gate
 //!   `u1(lambda)` / `p(lambda)`, and the general `u2(phi,lambda)` /
 //!   `u3(theta,phi,lambda)` (1 qubit); `cx cz swap` (2 qubits); `ccx`
-//!   (3 qubits). Angles use the same syntax as the text program format
-//!   (`pi`, `pi/2`, `-pi/4`, `2*pi`, or a float).
+//!   (3 qubits); the controlled rotations `crz(theta)` and controlled phase
+//!   `cu1(lambda)` / `cp(lambda)` (2 qubits). Angles use the same syntax as
+//!   the text program format (`pi`, `pi/2`, `-pi/4`, `2*pi`, or a float).
 //! - `//` line comments and `/* ... */` block comments.
 //!
-//! Anything else — custom `gate` definitions, `if`, `reset`, and controlled
-//! rotations — is reported as an unsupported-feature error rather than
-//! silently mis-simulated.
+//! Anything else — custom `gate` definitions, `if`, `reset`, `cu3`, etc. — is
+//! reported as an unsupported-feature error rather than silently
+//! mis-simulated.
 
 use crate::program::parse_angle;
 use crate::Circuit;
@@ -218,6 +219,18 @@ fn apply_gate(
             want(2, 0)?;
             require_distinct(&q, stmt)?;
             circuit.cz(q[0], q[1]);
+        }
+        "crz" => {
+            want(2, 1)?;
+            require_distinct(&q, stmt)?;
+            circuit.crz(angles[0], q[0], q[1]);
+        }
+        // `cu1(lambda)` is the OpenQASM 2 controlled phase; `cp` is its
+        // OpenQASM 3 name.
+        "cu1" | "cp" => {
+            want(2, 1)?;
+            require_distinct(&q, stmt)?;
+            circuit.cp(angles[0], q[0], q[1]);
         }
         "swap" => {
             want(2, 0)?;

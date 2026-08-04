@@ -107,6 +107,24 @@ fn error_u3_wrong_angle_count() {
 }
 
 #[test]
+fn imports_controlled_rotations() {
+    // cu1(pi) on |11> negates that amplitude; cp is accepted as an alias.
+    for src in [
+        "qreg q[2];\nx q[0];\nx q[1];\ncu1(pi) q[0],q[1];\n",
+        "qreg q[2];\nx q[0];\nx q[1];\ncp(pi) q[0],q[1];\n",
+    ] {
+        let state = qasm::parse(src).expect("should parse").run();
+        assert_relative_eq!(state.probability(0b11), 1.0, epsilon = 1e-12);
+        assert_relative_eq!(state.amplitudes()[0b11].re, -1.0, epsilon = 1e-12);
+    }
+
+    // crz round-trips through export.
+    let c = qasm::parse("qreg q[2];\ncrz(0.7) q[0],q[1];\n").expect("should parse");
+    let reimported = qasm::parse(&c.to_qasm().unwrap()).unwrap();
+    assert_same_probs(&reimported.run(), &c.run());
+}
+
+#[test]
 fn imports_cz_and_swap() {
     let src = "qreg q[2];\nx q[0];\nswap q[0],q[1];\ncz q[0],q[1];\n";
     let imported = qasm::parse(src).expect("should parse").run();

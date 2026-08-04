@@ -29,6 +29,7 @@ enum Op {
         control: usize,
         target: usize,
         label: &'static str,
+        params: Vec<f64>,
     },
     Swap {
         a: usize,
@@ -220,6 +221,7 @@ impl Circuit {
             control,
             target,
             label: "X",
+            params: Vec::new(),
         });
         self
     }
@@ -232,6 +234,34 @@ impl Circuit {
             control,
             target,
             label: "U",
+            params: Vec::new(),
+        });
+        self
+    }
+
+    /// Controlled-Rz: apply `rz(theta)` to `target` when `control` is |1>
+    /// (the OpenQASM `crz`).
+    pub fn crz(&mut self, theta: f64, control: usize, target: usize) -> &mut Self {
+        self.ops.push(Op::Controlled {
+            gate: gates::rz(theta),
+            control,
+            target,
+            label: "CRZ",
+            params: vec![theta],
+        });
+        self
+    }
+
+    /// Controlled phase: apply a phase e^{i·lambda} to the |11> component of
+    /// `control` and `target` (the OpenQASM `cu1`). Symmetric in its two
+    /// arguments.
+    pub fn cp(&mut self, lambda: f64, control: usize, target: usize) -> &mut Self {
+        self.ops.push(Op::Controlled {
+            gate: gates::p(lambda),
+            control,
+            target,
+            label: "CP",
+            params: vec![lambda],
         });
         self
     }
@@ -244,6 +274,7 @@ impl Circuit {
             control,
             target,
             label: "Z",
+            params: Vec::new(),
         });
         self
     }
@@ -392,18 +423,24 @@ impl Circuit {
                     control,
                     target,
                     label,
+                    params,
                     ..
                 } => {
                     let name = match *label {
                         "X" => "cx",
                         "Z" => "cz",
+                        "CRZ" => "crz",
+                        "CP" => "cu1",
                         _ => {
                             return Err(
                                 "cannot export an arbitrary controlled-U (cu) to OpenQASM".into()
                             )
                         }
                     };
-                    out.push_str(&format!("{name} q[{control}],q[{target}];\n"));
+                    out.push_str(&format!(
+                        "{name}{} q[{control}],q[{target}];\n",
+                        format_params(params)
+                    ));
                 }
                 Op::Swap { a, b } => {
                     out.push_str(&format!("swap q[{a}],q[{b}];\n"));
