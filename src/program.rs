@@ -12,10 +12,11 @@
 //! sample 1000 42
 //! ```
 //!
-//! Supported instructions: `qubits N`; single-qubit `h/x/y/z/s/t Q`;
-//! rotations `rx/ry/rz THETA Q`; two-qubit `cnot/cz C T` and `swap A B`;
-//! `toffoli C1 C2 T`; and a terminal `sample SHOTS SEED`. Angles are a plain
-//! float or a symbolic multiple of pi such as `pi`, `pi/2`, `-pi/4`, or `2pi`.
+//! Supported instructions: `qubits N`; single-qubit `h/x/y/z/s/t/sdg/tdg Q`;
+//! rotations `rx/ry/rz THETA Q` and the phase gate `p THETA Q`; two-qubit
+//! `cnot/cz C T` and `swap A B`; `toffoli C1 C2 T`; and a terminal
+//! `sample SHOTS SEED`. Angles are a plain float or a symbolic multiple of pi
+//! such as `pi`, `pi/2`, `-pi/4`, or `2pi`.
 
 use crate::Circuit;
 use std::f64::consts::PI;
@@ -71,7 +72,7 @@ pub fn parse(src: &str) -> Result<Program, String> {
             .ok_or_else(|| at("first instruction must be `qubits N`".into()))?;
 
         match cmd {
-            "h" | "x" | "y" | "z" | "s" | "t" => {
+            "h" | "x" | "y" | "z" | "s" | "t" | "sdg" | "tdg" => {
                 expect_arity(&toks, 2).map_err(&at)?;
                 let q = parse_qubit(&toks, 1, n).map_err(&at)?;
                 match cmd {
@@ -81,10 +82,12 @@ pub fn parse(src: &str) -> Result<Program, String> {
                     "z" => c.z(q),
                     "s" => c.s(q),
                     "t" => c.t(q),
+                    "sdg" => c.sdg(q),
+                    "tdg" => c.tdg(q),
                     _ => unreachable!(),
                 };
             }
-            "rx" | "ry" | "rz" => {
+            "rx" | "ry" | "rz" | "p" => {
                 expect_arity(&toks, 3).map_err(&at)?;
                 let theta = parse_angle(toks[1]).map_err(&at)?;
                 let q = parse_qubit(&toks, 2, n).map_err(&at)?;
@@ -92,6 +95,7 @@ pub fn parse(src: &str) -> Result<Program, String> {
                     "rx" => c.rx(theta, q),
                     "ry" => c.ry(theta, q),
                     "rz" => c.rz(theta, q),
+                    "p" => c.p(theta, q),
                     _ => unreachable!(),
                 };
             }

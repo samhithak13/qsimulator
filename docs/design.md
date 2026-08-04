@@ -64,7 +64,7 @@ extra context. Update it as features land.
 ### What works today
 
 Everything below is implemented, tested, and pushed to `main`. CI (fmt +
-clippy `-D warnings` + build + test) is green. **81 tests** (79 unit +
+clippy `-D warnings` + build + test) is green. **91 tests** (89 unit +
 integration across 13 binaries, plus 2 doctests).
 
 | Area | API | Status |
@@ -74,11 +74,11 @@ integration across 13 binaries, plus 2 doctests).
 | Controlled apply | `State::apply_controlled_1q` | ✅ |
 | Multi-controlled apply | `State::apply_multi_controlled_1q(gate, controls, target)` | ✅ |
 | SWAP | `State::swap_qubits(a, b)` | ✅ |
-| Gates | `gates::{x,y,z,h,s,t,rx,ry,rz}` | ✅ |
+| Gates | `gates::{x,y,z,h,s,t,sdg,tdg,p,rx,ry,rz}` | ✅ |
 | Measurement | `State::{prob_qubit_one, measure_qubit, measure_all}` | ✅ |
 | Sampling | `Circuit::sample(shots, seed) -> HashMap<usize, usize>` | ✅ |
 | RNG | `rng::Rng` (seedable xorshift64, SplitMix64 seeding) | ✅ |
-| Circuit single-qubit builders | `h, x, y, z, s, t, rx, ry, rz` | ✅ |
+| Circuit single-qubit builders | `h, x, y, z, s, t, sdg, tdg, p, rx, ry, rz` | ✅ |
 | Circuit controlled builders | `cnot, cz, cu(gate,c,t), mcx(controls,t), mcu(gate,controls,t)` | ✅ |
 | Circuit other builders | `swap, toffoli` (toffoli now delegates to `mcx`) | ✅ |
 | Circuit rendering | `Circuit::diagram() -> String` + `Display` (ASCII diagram) | ✅ |
@@ -176,19 +176,27 @@ checks above must pass before committing.
   return an export error. To support it, `Op::Single` now records `param`
   (rotation angle). CLI: `--emit-qasm`. Tested in `tests/qasm_export.rs`.
 
+- ✅ **More gates (part 1)** — `sdg` (S†), `tdg` (T†), and the phase gate
+  `p(λ)` (OpenQASM `u1`). Added to `gates.rs` + builders + both the native
+  program format and the QASM import/export maps. Tested in
+  `tests/single_qubit_builders.rs`, `tests/program.rs`, `tests/qasm*.rs`, and
+  `gates.rs` unit tests.
+
 ### Suggested next steps (v0.3, not yet started)
 
 Roughly in priority order; none of these exist yet:
 
-1. **Benchmarks** — a committed harness timing gate application across qubit
+1. **`u2`/`u3` + controlled rotations** — the remaining common QASM gates.
+   Needs a small refactor: `Op::Single`'s `param: Option<f64>` (one angle)
+   must become multi-parameter (e.g. `params: Vec<f64>` or `[f64; 3]`), and
+   `Op::Controlled` would need a param + kind to export controlled rotations.
+   Do import + export + native builder together, as with part 1.
+2. **Benchmarks** — a committed harness timing gate application across qubit
    counts (state a fixed protocol; no perf claims without it). Only meaningful
    alongside real optimization work (blocked/branch-free kernel, OpenMP-style
    parallelism, or a sparse fast path).
-2. **More gates** — `sdg`, `tdg`, `u1/u2/u3`, controlled rotations: add to
-   `gates.rs` + builders + the QASM import/export maps together.
-3. **QASM `gate` sugar / registers by name in export** — export currently uses
-   a single flat `qreg q[n]`; preserving original register names would be
-   nicer for humans (cosmetic).
+3. **Registers by name in export** — export currently uses a single flat
+   `qreg q[n]`; preserving original register names would be nicer (cosmetic).
 
 When adding a gate: add the matrix in `gates.rs`, a builder in `circuit.rs`
 (+ `Op` variant and `run` arm if it needs new state machinery), and both a

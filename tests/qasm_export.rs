@@ -25,6 +25,9 @@ fn round_trips_a_mixed_circuit() {
         .z(0)
         .s(1)
         .t(2)
+        .sdg(0)
+        .tdg(1)
+        .p(0.9, 2)
         .rx(0.7, 0)
         .ry(1.1, 1)
         .rz(-0.4, 2)
@@ -67,6 +70,18 @@ fn export_is_idempotent_through_parse() {
     let once = qasm::parse(src).unwrap().to_qasm().unwrap();
     let twice = qasm::parse(&once).unwrap().to_qasm().unwrap();
     assert_eq!(once, twice);
+}
+
+/// The phase gate exports as OpenQASM `u1` and round-trips.
+#[test]
+fn phase_gate_exports_as_u1() {
+    let mut c = Circuit::new(1);
+    c.p(0.9, 0);
+    let q = c.to_qasm().unwrap();
+    assert!(q.contains("u1(0.9) q[0];"), "{q}");
+
+    let reimported = qasm::parse(&q).unwrap();
+    assert_same_probs(&reimported.run(), &c.run());
 }
 
 #[test]

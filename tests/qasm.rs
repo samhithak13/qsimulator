@@ -65,6 +65,26 @@ fn imports_ccx_toffoli() {
 }
 
 #[test]
+fn imports_sdg_tdg_and_u1_phase() {
+    // x then t then tdg then sdg then s -> net phase +1 on |1> (identity).
+    let src = "qreg q[1];\nx q[0];\nt q[0];\ntdg q[0];\nsdg q[0];\ns q[0];\n";
+    let imported = qasm::parse(src).expect("should parse").run();
+    assert_relative_eq!(imported.amplitudes()[1].re, 1.0, epsilon = 1e-12);
+    assert_relative_eq!(imported.amplitudes()[1].im, 0.0, epsilon = 1e-12);
+
+    // u1(pi) is the phase gate; on |1> it matches Z.
+    let mut expected = Circuit::new(1);
+    expected.x(0).p(std::f64::consts::PI, 0);
+    let via_u1 = qasm::parse("qreg q[1];\nx q[0];\nu1(pi) q[0];\n").unwrap();
+    assert_same_probs(&via_u1.run(), &expected.run());
+    assert_relative_eq!(via_u1.run().amplitudes()[1].re, -1.0, epsilon = 1e-12);
+
+    // `p(lambda)` is accepted as an alias for `u1(lambda)`.
+    let via_p = qasm::parse("qreg q[1];\nx q[0];\np(pi) q[0];\n").unwrap();
+    assert_same_probs(&via_p.run(), &expected.run());
+}
+
+#[test]
 fn imports_cz_and_swap() {
     let src = "qreg q[2];\nx q[0];\nswap q[0],q[1];\ncz q[0],q[1];\n";
     let imported = qasm::parse(src).expect("should parse").run();
@@ -99,8 +119,8 @@ qreg q[1]; /* inline */ x q[0]; // trailing
 
 #[test]
 fn error_unsupported_gate() {
-    let err = qasm::parse("qreg q[1];\nsdg q[0];\n").unwrap_err();
-    assert!(err.contains("unsupported gate `sdg`"), "{err}");
+    let err = qasm::parse("qreg q[1];\nu3(0,0,0) q[0];\n").unwrap_err();
+    assert!(err.contains("unsupported gate `u3`"), "{err}");
 }
 
 #[test]

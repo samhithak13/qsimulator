@@ -119,6 +119,42 @@ impl Circuit {
         self
     }
 
+    /// S-dagger gate = S† = diag(1, -i).
+    pub fn sdg(&mut self, target: usize) -> &mut Self {
+        self.ops.push(Op::Single {
+            gate: gates::sdg(),
+            target,
+            label: "SDG",
+            param: None,
+        });
+        self
+    }
+
+    /// T-dagger gate = T† = diag(1, e^{-i pi/4}).
+    pub fn tdg(&mut self, target: usize) -> &mut Self {
+        self.ops.push(Op::Single {
+            gate: gates::tdg(),
+            target,
+            label: "TDG",
+            param: None,
+        });
+        self
+    }
+
+    /// Phase gate P(lambda) = diag(1, e^{i·lambda}) on `target`.
+    ///
+    /// Generalizes Z/S/T (`p(π)` = Z, `p(π/2)` = S, `p(π/4)` = T) and maps to
+    /// OpenQASM's `u1(lambda)`.
+    pub fn p(&mut self, lambda: f64, target: usize) -> &mut Self {
+        self.ops.push(Op::Single {
+            gate: gates::p(lambda),
+            target,
+            label: "P",
+            param: Some(lambda),
+        });
+        self
+    }
+
     /// Rotation about the X axis by `theta` on `target`.
     pub fn rx(&mut self, theta: f64, target: usize) -> &mut Self {
         self.ops.push(Op::Single {
@@ -315,6 +351,9 @@ impl Circuit {
                         "Z" => "z",
                         "S" => "s",
                         "T" => "t",
+                        "SDG" => "sdg",
+                        "TDG" => "tdg",
+                        "P" => "u1",
                         "RX" => "rx",
                         "RY" => "ry",
                         "RZ" => "rz",

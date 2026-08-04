@@ -153,8 +153,8 @@ An input is treated as OpenQASM 2.0 if it ends in `.qasm` or begins with an
 
 PROGRAM FORMAT (one instruction per line; `#` starts a comment):
     qubits N                   Declare the register size (must come first)
-    h|x|y|z|s|t Q              Single-qubit gate on qubit Q
-    rx|ry|rz THETA Q           Rotation by THETA (float, or pi, pi/2, -pi/4, 2pi)
+    h|x|y|z|s|t|sdg|tdg Q      Single-qubit gate on qubit Q
+    rx|ry|rz|p THETA Q         Rotation/phase by THETA (float, or pi, pi/2, ...)
     cnot|cz C T                Two-qubit controlled gate (control C, target T)
     swap A B                   Exchange qubits A and B
     toffoli C1 C2 T            CCNOT

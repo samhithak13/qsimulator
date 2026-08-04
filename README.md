@@ -12,9 +12,10 @@ simulation works under the hood.
 
 - **State-vector simulation** of up to ~20–25 qubits on a typical laptop
   (memory grows as `2^n` complex amplitudes).
-- A small, readable **gate set**: X, Y, Z, H, S, T, the rotations Rx/Ry/Rz,
-  SWAP, plus controlled gates (CNOT, CZ, Toffoli) and arbitrary controlled
-  unitaries with any number of controls (`cu`, `mcx`, `mcu`).
+- A small, readable **gate set**: X, Y, Z, H, S, T, S†, T†, the phase gate
+  P(λ), the rotations Rx/Ry/Rz, SWAP, plus controlled gates (CNOT, CZ,
+  Toffoli) and arbitrary controlled unitaries with any number of controls
+  (`cu`, `mcx`, `mcu`).
 - A **circuit builder** API for composing gates into programs.
 - **Measurement** in the computational basis with correct Born-rule
   probabilities, post-measurement collapse, and seedable sampling.
@@ -76,9 +77,10 @@ cnot 1 2        # GHZ state
 sample 1000 42
 ```
 
-Supported: `qubits N`; `h|x|y|z|s|t Q`; `rx|ry|rz THETA Q` (THETA is a float
-or a symbolic multiple of pi like `pi/2`, `-pi/4`, `2pi`); `cnot|cz C T`;
-`swap A B`; `toffoli C1 C2 T`; and an optional `sample SHOTS SEED`.
+Supported: `qubits N`; `h|x|y|z|s|t|sdg|tdg Q`; `rx|ry|rz|p THETA Q` (THETA is
+a float or a symbolic multiple of pi like `pi/2`, `-pi/4`, `2pi`);
+`cnot|cz C T`; `swap A B`; `toffoli C1 C2 T`; and an optional `sample SHOTS
+SEED`.
 
 ### OpenQASM 2.0 import
 
@@ -93,7 +95,8 @@ h q[0];
 cx q[0],q[1];
 ```
 
-Supported gates: `x y z h s t`, `rx/ry/rz(theta)`, `cx`, `cz`, `swap`, `ccx`.
+Supported gates: `x y z h s t sdg tdg`, `rx/ry/rz(theta)`, `u1(lambda)`
+(alias `p`), `cx`, `cz`, `swap`, `ccx`.
 Multiple `qreg`s map into a single flat qubit space in declaration order;
 `creg`, `barrier`, and `measure` are accepted and ignored; unsupported
 features (custom `gate`, `if`, `reset`, …) are reported rather than

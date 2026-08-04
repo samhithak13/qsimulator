@@ -11,14 +11,15 @@
 //!   indices).
 //! - `creg name[N];`, `barrier ...;`, and `measure ... -> ...;` are accepted
 //!   and ignored (sampling is done separately via [`Circuit::sample`]).
-//! - Gates: `x y z h s t` (1 qubit), `rx ry rz(theta)` (1 qubit),
-//!   `cx cz swap` (2 qubits), `ccx` (3 qubits). Angles use the same syntax as
-//!   the text program format (`pi`, `pi/2`, `-pi/4`, `2*pi`, or a float).
+//! - Gates: `x y z h s t sdg tdg` (1 qubit), `rx ry rz(theta)` and the phase
+//!   gate `u1(lambda)` / `p(lambda)` (1 qubit), `cx cz swap` (2 qubits),
+//!   `ccx` (3 qubits). Angles use the same syntax as the text program format
+//!   (`pi`, `pi/2`, `-pi/4`, `2*pi`, or a float).
 //! - `//` line comments and `/* ... */` block comments.
 //!
-//! Anything else — custom `gate` definitions, `if`, `reset`, `u1/u2/u3`,
-//! `sdg/tdg`, etc. — is reported as an unsupported-feature error rather than
-//! silently mis-simulated.
+//! Anything else — custom `gate` definitions, `if`, `reset`, `u2/u3`, and
+//! controlled rotations — is reported as an unsupported-feature error rather
+//! than silently mis-simulated.
 
 use crate::program::parse_angle;
 use crate::Circuit;
@@ -162,6 +163,19 @@ fn apply_gate(
         "t" => {
             want(1)?;
             circuit.t(q[0]);
+        }
+        "sdg" => {
+            want(1)?;
+            circuit.sdg(q[0]);
+        }
+        "tdg" => {
+            want(1)?;
+            circuit.tdg(q[0]);
+        }
+        // `u1(lambda)` is the OpenQASM 2 phase gate; `p` is its OpenQASM 3 name.
+        "u1" | "p" => {
+            want(1)?;
+            circuit.p(angle()?, q[0]);
         }
         "rx" => {
             want(1)?;

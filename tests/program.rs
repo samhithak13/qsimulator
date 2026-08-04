@@ -60,6 +60,16 @@ fn all_two_qubit_forms_parse() {
 }
 
 #[test]
+fn parses_sdg_tdg_and_phase() {
+    // x, then t; t; sdg; s -> back to phase +1 (identity on |1>); p(pi) = Z.
+    let prog = program::parse("qubits 1\nx 0\nsdg 0\ns 0\np pi 0\n").expect("should parse");
+    let state = prog.circuit.run();
+    // sdg then s cancel; p(pi) negates the |1> amplitude.
+    assert_relative_eq!(state.probability(1), 1.0, epsilon = 1e-12);
+    assert_relative_eq!(state.amplitudes()[1].re, -1.0, epsilon = 1e-12);
+}
+
+#[test]
 fn error_gate_before_qubits() {
     let err = program::parse("h 0\n").unwrap_err();
     assert!(

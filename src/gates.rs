@@ -44,6 +44,29 @@ pub fn t() -> Gate {
     ]
 }
 
+/// S-dagger gate = S† = diag(1, -i).
+pub fn sdg() -> Gate {
+    [[c(1.0, 0.0), c(0.0, 0.0)], [c(0.0, 0.0), c(0.0, -1.0)]]
+}
+
+/// T-dagger gate = T† = diag(1, e^{-i pi/4}).
+pub fn tdg() -> Gate {
+    let phase = -std::f64::consts::FRAC_PI_4;
+    [
+        [c(1.0, 0.0), c(0.0, 0.0)],
+        [c(0.0, 0.0), c(phase.cos(), phase.sin())],
+    ]
+}
+
+/// Phase gate P(λ) = diag(1, e^{iλ}).
+///
+/// The continuous generalization of the diagonal phase gates: `p(π)` = Z,
+/// `p(π/2)` = S, `p(π/4)` = T. Equivalent to OpenQASM's `u1(λ)`.
+pub fn p(lambda: f64) -> Gate {
+    let (s, co) = lambda.sin_cos();
+    [[c(1.0, 0.0), c(0.0, 0.0)], [c(0.0, 0.0), c(co, s)]]
+}
+
 /// Rotation about the X axis by angle `theta`:
 /// `[[cos(θ/2), -i·sin(θ/2)], [-i·sin(θ/2), cos(θ/2)]]`.
 ///
@@ -131,5 +154,25 @@ mod tests {
             let id = [[c(1.0, 0.0), c(0.0, 0.0)], [c(0.0, 0.0), c(1.0, 0.0)]];
             assert_gate_eq(&prod, &id);
         }
+    }
+
+    /// Ordinary 2x2 matrix product `a·b`.
+    fn mul(a: &Gate, b: &Gate) -> Gate {
+        let e = |i: usize, j: usize| a[i][0] * b[0][j] + a[i][1] * b[1][j];
+        [[e(0, 0), e(0, 1)], [e(1, 0), e(1, 1)]]
+    }
+
+    #[test]
+    fn daggers_invert_their_gates() {
+        let id = [[c(1.0, 0.0), c(0.0, 0.0)], [c(0.0, 0.0), c(1.0, 0.0)]];
+        assert_gate_eq(&mul(&s(), &sdg()), &id);
+        assert_gate_eq(&mul(&t(), &tdg()), &id);
+    }
+
+    #[test]
+    fn phase_gate_specializes_to_z_s_t() {
+        assert_gate_eq(&p(PI), &z());
+        assert_gate_eq(&p(PI / 2.0), &s());
+        assert_gate_eq(&p(PI / 4.0), &t());
     }
 }
