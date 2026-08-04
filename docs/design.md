@@ -64,8 +64,8 @@ extra context. Update it as features land.
 ### What works today
 
 Everything below is implemented, tested, and pushed to `main`. CI (fmt +
-clippy `-D warnings` + build + test) is green. **57 tests** (56 unit +
-integration across 10 binaries, plus a doctest).
+clippy `-D warnings` + build + test) is green. **60 tests** (59 unit +
+integration across 11 binaries, plus a doctest).
 
 | Area | API | Status |
 |---|---|---|
@@ -99,7 +99,8 @@ integration across 10 binaries, plus a doctest).
 - `programs/ghz.qsim` — sample program in the text format.
 - `tests/` — `bell_state.rs`, `measurement.rs`, `rotations.rs`, `swap.rs`,
   `toffoli.rs`, `single_qubit_builders.rs` (y/s/t), `controlled_builders.rs`
-  (cz/cu/mcx/mcu), `diagram.rs` (ASCII rendering), `program.rs` (parser).
+  (cz/cu/mcx/mcu), `diagram.rs` (ASCII rendering), `program.rs` (parser),
+  `ghz.rs` (3- and 4-qubit GHZ probabilities + sampling).
 
 Note: `Op` variants now carry a `label: &'static str` used only by
 `diagram()`; it never affects execution (`run` ignores it). New gate
@@ -150,16 +151,18 @@ checks above must pass before committing.
   built-in demo, with `--help`. Tested in `tests/program.rs`; sample program
   at `programs/ghz.qsim`. This also covers a GHZ end-to-end path.
 
-### Suggested next steps (v0.2 → v0.3, not yet started)
+- ✅ **GHZ + multi-qubit fixtures** — `tests/ghz.rs` asserts 3- and 4-qubit
+  GHZ probabilities and sampling (only 000…/111… outcomes). Salvaged from the
+  superseded PR #2 branch, which was an older reimplementation of builders/
+  Display that `main` already had.
+
+### Suggested next steps (v0.3, not yet started)
 
 Roughly in priority order; none of these exist yet:
 
-1. **GHZ + multi-qubit fixtures** — a dedicated `tests/` fixture asserting
-   GHZ probabilities/sampling for n = 3..5 (the CLI exercises GHZ, but there
-   is no direct probability assertion beyond the program parser test).
-2. **Performance (v0.3)** — in-place kernels already; consider benchmarks
+1. **Performance (v0.3)** — in-place kernels already; consider benchmarks
    and a sparse fast path only after the above.
-3. **OpenQASM-ish import/export** — the text format is bespoke; a small
+2. **OpenQASM-ish import/export** — the text format is bespoke; a small
    OpenQASM 2 subset importer would improve interop (larger effort).
 
 When adding a gate: add the matrix in `gates.rs`, a builder in `circuit.rs`
