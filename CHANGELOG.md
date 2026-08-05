@@ -25,5 +25,11 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - CI on Linux and macOS: formatting, clippy (`-D warnings`), build, test,
   documentation (`-D warnings`), example execution, and the Qiskit
   cross-validation.
+- `cargo bench` throughput harness (`benches/throughput.rs`).
+
+### Changed
+- Restructured `apply_1q` into a bounds-check-free walk over `chunks_exact_mut`
+  and hoisted gate-matrix entries into locals across the gate kernels; roughly
+  1.3–1.6× higher single-gate throughput on an Apple M1 (see benches/README.md).
 
 [Unreleased]: https://github.com/samhithak13/qsimulator/commits/main

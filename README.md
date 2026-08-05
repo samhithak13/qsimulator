@@ -80,6 +80,14 @@ Linux and macOS, enforces `cargo fmt --check`, `cargo clippy -D warnings`, and
 a warning-clean `cargo doc`, executes the examples, and runs the Qiskit
 cross-validation.
 
+## Benchmarks
+
+`cargo bench` measures gate-application throughput (the simulator's inner
+loop). The harness and a note on the kernel's structure — a bounds-check-free
+walk over the target bit's `|0>`/`|1>` halves — are in
+[benches/README.md](benches/README.md). Numbers are machine-dependent, so
+regenerate them on the target machine rather than trusting a checked-in figure.
+
 ## Project layout
 
 ```
@@ -145,12 +153,13 @@ arbitrary controlled-U, a three-control X) return an export error.
 ## Status
 
 The core is complete and covered by tests: simulation, the gate set above,
-measurement and sampling, the three front ends, ASCII diagrams, and
-cross-validation against Qiskit.
+measurement and sampling, the three front ends, ASCII diagrams,
+cross-validation against Qiskit, and a throughput benchmark harness.
 
 Planned:
 
-- A benchmark harness, with kernel work to back any performance numbers.
+- Feature-gated parallel gate kernels (kept off by default so the core stays
+  dependency-free).
 
 Design notes and a detailed status table live in [docs/design.md](docs/design.md).
 

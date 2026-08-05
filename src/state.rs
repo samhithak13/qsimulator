@@ -37,18 +37,24 @@ impl State {
     }
 
     /// Apply a single-qubit gate (2x2 unitary) to qubit `target`.
+    ///
+    /// The amplitude vector splits into contiguous blocks of `2·2^target`,
+    /// and within each block the low and high halves are the `|0>`/`|1>`
+    /// partners of the target bit. Iterating over those halves with slice
+    /// iterators keeps the inner loop bounds-check-free.
     pub fn apply_1q(&mut self, gate: &[[Complex64; 2]; 2], target: usize) {
         assert!(target < self.n_qubits, "target qubit out of range");
+        // Hoist the matrix entries so the inner loop does not reload them.
+        let (g00, g01) = (gate[0][0], gate[0][1]);
+        let (g10, g11) = (gate[1][0], gate[1][1]);
         let step = 1usize << target;
-        let mut i = 0;
-        while i < self.amps.len() {
-            for j in i..i + step {
-                let a = self.amps[j];
-                let b = self.amps[j + step];
-                self.amps[j] = gate[0][0] * a + gate[0][1] * b;
-                self.amps[j + step] = gate[1][0] * a + gate[1][1] * b;
+        for block in self.amps.chunks_exact_mut(step << 1) {
+            let (low, high) = block.split_at_mut(step);
+            for (a, b) in low.iter_mut().zip(high.iter_mut()) {
+                let (x, y) = (*a, *b);
+                *a = g00 * x + g01 * y;
+                *b = g10 * x + g11 * y;
             }
-            i += step << 1;
         }
     }
 
@@ -63,6 +69,8 @@ impl State {
         assert!(control < self.n_qubits, "control qubit out of range");
         assert!(target < self.n_qubits, "target qubit out of range");
         assert_ne!(control, target, "control and target must differ");
+        let (g00, g01) = (gate[0][0], gate[0][1]);
+        let (g10, g11) = (gate[1][0], gate[1][1]);
         let cmask = 1usize << control;
         let tstep = 1usize << target;
         for j in 0..self.amps.len() {
@@ -71,8 +79,8 @@ impl State {
             if (j & tstep) == 0 && (j & cmask) != 0 {
                 let a = self.amps[j];
                 let b = self.amps[j + tstep];
-                self.amps[j] = gate[0][0] * a + gate[0][1] * b;
-                self.amps[j + tstep] = gate[1][0] * a + gate[1][1] * b;
+                self.amps[j] = g00 * a + g01 * b;
+                self.amps[j + tstep] = g10 * a + g11 * b;
             }
         }
     }
@@ -91,6 +99,8 @@ impl State {
         target: usize,
     ) {
         assert!(target < self.n_qubits, "target qubit out of range");
+        let (g00, g01) = (gate[0][0], gate[0][1]);
+        let (g10, g11) = (gate[1][0], gate[1][1]);
         let mut cmask = 0usize;
         for &ctrl in controls {
             assert!(ctrl < self.n_qubits, "control qubit out of range");
@@ -103,8 +113,8 @@ impl State {
             if (j & tstep) == 0 && (j & cmask) == cmask {
                 let a = self.amps[j];
                 let b = self.amps[j + tstep];
-                self.amps[j] = gate[0][0] * a + gate[0][1] * b;
-                self.amps[j + tstep] = gate[1][0] * a + gate[1][1] * b;
+                self.amps[j] = g00 * a + g01 * b;
+                self.amps[j + tstep] = g10 * a + g11 * b;
             }
         }
     }

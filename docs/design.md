@@ -20,7 +20,11 @@ application a stride-`2^q` butterfly over amplitude pairs.
   unconditional gate, one control matches `apply_controlled_1q`, and two
   controls with X give a Toffoli (`circuit.toffoli`).
 
-Both are done in place, so memory is a single `2^n` vector.
+Both are done in place, so memory is a single `2^n` vector. `apply_1q` walks
+the amplitude vector as `chunks_exact_mut(2·2^target)` and splits each block
+into the target bit's `|0>`/`|1>` halves, so the inner loop is bounds-check
+free; the gate-matrix entries are hoisted into locals in every kernel. See
+`benches/` for the throughput harness and measured effect.
 
 The gate set covers the Paulis (X, Y, Z), Hadamard, the phase gates S and
 T (and their daggers), the phase gate `p(λ)`, the general single-qubit
@@ -135,8 +139,7 @@ unit test and a circuit-level integration test.
 
 ## Roadmap
 
-- A benchmark harness with a fixed protocol, alongside kernel work — a
-  branch-free blocked update, then parallelism — so any performance number is
-  reproducible.
+- Feature-gated parallelism for the gate kernels (a safe, `rayon`-based
+  backend behind a `parallel` feature so the default stays dependency-free).
 - `cu3` import and export, to round-trip the arbitrary controlled-U gates that
   currently have no OpenQASM 2 equivalent.
