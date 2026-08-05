@@ -32,6 +32,15 @@ cargo run -- programs/bell.qasm   # OpenQASM 2.0
 cargo run -- --help               # program format and options
 ```
 
+Worked examples live in [`examples/`](examples) and each verify their own
+output:
+
+```bash
+cargo run --example ghz            # N-qubit GHZ state
+cargo run --example grover         # Grover search (found with certainty)
+cargo run --example teleportation  # measurement + classical feed-forward
+```
+
 ## What's here
 
 - **State-vector simulation** up to ~25 qubits on a laptop; amplitudes take
