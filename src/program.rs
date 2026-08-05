@@ -25,14 +25,18 @@ use std::f64::consts::PI;
 /// A parsed program: the built circuit plus an optional `sample` directive.
 #[derive(Debug, Clone)]
 pub struct Program {
+    /// The circuit built from the program's gate instructions.
     pub circuit: Circuit,
+    /// The `sample SHOTS SEED` directive, if the program had one.
     pub sample: Option<SampleSpec>,
 }
 
 /// Parameters from a `sample SHOTS SEED` directive.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SampleSpec {
+    /// Number of shots to sample.
     pub shots: usize,
+    /// RNG seed, for reproducible sampling.
     pub seed: u64,
 }
 

@@ -59,6 +59,7 @@ impl Circuit {
         }
     }
 
+    /// Hadamard gate on `target`.
     pub fn h(&mut self, target: usize) -> &mut Self {
         self.ops.push(Op::Single {
             gate: gates::h(),
@@ -69,6 +70,7 @@ impl Circuit {
         self
     }
 
+    /// Pauli-X (NOT) gate on `target`.
     pub fn x(&mut self, target: usize) -> &mut Self {
         self.ops.push(Op::Single {
             gate: gates::x(),
@@ -79,6 +81,7 @@ impl Circuit {
         self
     }
 
+    /// Pauli-Z gate on `target`.
     pub fn z(&mut self, target: usize) -> &mut Self {
         self.ops.push(Op::Single {
             gate: gates::z(),
@@ -89,6 +92,7 @@ impl Circuit {
         self
     }
 
+    /// Pauli-Y gate on `target`.
     pub fn y(&mut self, target: usize) -> &mut Self {
         self.ops.push(Op::Single {
             gate: gates::y(),

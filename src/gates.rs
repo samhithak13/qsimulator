@@ -72,7 +72,7 @@ pub fn p(lambda: f64) -> Gate {
 /// ` [e^{iφ}·sin(θ/2),  e^{i(φ+λ)}·cos(θ/2)]]`.
 ///
 /// Every single-qubit unitary is a `u3` up to global phase — e.g.
-/// `u3(π,0,π)` = X, `u3(0,0,λ)` = [`p`](p)(λ).
+/// `u3(π,0,π)` = X, and `u3(0,0,λ)` is the phase gate [`p`]`(λ)`.
 pub fn u3(theta: f64, phi: f64, lambda: f64) -> Gate {
     let (st, ct) = (theta / 2.0).sin_cos();
     let m00 = c(ct, 0.0);
