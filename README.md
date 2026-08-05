@@ -1,74 +1,92 @@
 # qsimulator
 
-A **quantum circuit simulator** written in Rust.
+[![CI](https://github.com/samhithak13/qsimulator/actions/workflows/ci.yml/badge.svg)](https://github.com/samhithak13/qsimulator/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
-`qsimulator` models an ideal (noiseless) quantum computer by maintaining
-the full state vector of an *n*-qubit register and applying unitary gate
-operations to it. It is intended as a clear, well-tested foundation for
-experimenting with quantum algorithms and for learning how state-vector
-simulation works under the hood.
+A noiseless quantum circuit simulator in Rust. It holds the full `2^n` state
+vector of an *n*-qubit register, applies unitary gates, measures in the
+computational basis, and reads and writes OpenQASM 2.0. The priority is being
+correct and readable, not fast.
 
-## Scope & goals
+## Example
 
-- **State-vector simulation** of up to ~20–25 qubits on a typical laptop
-  (memory grows as `2^n` complex amplitudes).
-- A small, readable **gate set**: X, Y, Z, H, S, T, S†, T†, the phase gate
-  P(λ), the general single-qubit U2/U3, the rotations Rx/Ry/Rz, SWAP, plus
-  controlled gates (CNOT, CZ, Toffoli, controlled-Rz, controlled-phase) and
-  arbitrary controlled unitaries with any number of controls (`cu`, `mcx`,
-  `mcu`).
-- A **circuit builder** API for composing gates into programs.
-- **Measurement** in the computational basis with correct Born-rule
-  probabilities, post-measurement collapse, and seedable sampling.
-- Correctness first: every gate and circuit primitive is covered by tests.
+```rust
+use qsimulator::Circuit;
 
-### Non-goals (for now)
+let mut c = Circuit::new(2);
+c.h(0).cnot(0, 1); // prepare a Bell state
 
-- Noise / density-matrix simulation.
-- GPU acceleration or distributed simulation.
-- A hardware backend or transpiler.
+print!("{}", c.diagram());
+// q0: -H-*-
+// q1: ---X-
 
-These may be revisited once the core is stable — see the tracking issue.
+let counts = c.sample(1000, 42); // seeded; only 00 and 11 ever appear
+```
+
+The same circuits can be written as a small text program or as OpenQASM and
+run from the command line:
+
+```bash
+cargo run -- programs/ghz.qsim    # text program
+cargo run -- programs/bell.qasm   # OpenQASM 2.0
+cargo run -- --help               # program format and options
+```
+
+## What's here
+
+- **State-vector simulation** up to ~25 qubits on a laptop; amplitudes take
+  `16·2^n` bytes, which is the practical limit.
+- **Gates** — X, Y, Z, H, S, T and their daggers, the phase gate P(λ), the
+  general single-qubit U2/U3, Rx/Ry/Rz, SWAP, CNOT, CZ, controlled rotations,
+  Toffoli, and arbitrary multi-controlled unitaries.
+- **Measurement** — single-qubit and full-register collapse plus Born-rule
+  sampling, driven by a seedable, dependency-free RNG so runs reproduce.
+- **Three front ends** — a Rust builder API, a line-based text format, and
+  OpenQASM 2.0 import and export.
+- **ASCII circuit diagrams** via `Circuit::diagram()` / `Display`.
+
+The core depends only on `num-complex`.
+
+## Testing
+
+Every quantity has an independent oracle rather than a hand-copied expected
+value:
+
+- Gate matrices are checked against their algebraic identities — `Rx(π)`
+  equals X up to global phase, `S·S† = I`, `p(π/2) = S`, and so on.
+- The OpenQASM importer is validated by running an imported circuit and
+  comparing its amplitudes to the equivalent builder circuit; export is
+  checked by round-tripping back through the importer.
+- Measurement is checked statistically: a Bell state only ever collapses to
+  00 or 11, measuring one half of a pair fixes the other, and the same seed
+  reproduces the same histogram.
+
+`cargo test` runs 100+ unit and integration tests. CI also enforces
+`cargo fmt --check` and `cargo clippy -D warnings` on Linux.
 
 ## Project layout
 
 ```
 qsimulator/
-├── src/            # Library + CLI source
-│   ├── lib.rs      # Crate root, re-exports
-│   ├── state.rs    # State vector representation
-│   ├── gates.rs    # Gate definitions (unitary matrices)
-│   ├── circuit.rs  # Circuit builder & execution
-│   └── main.rs     # Small demo CLI (Bell state)
-├── tests/          # Integration tests
-├── docs/           # Design notes & documentation
-└── .github/        # CI workflows
+├── src/
+│   ├── lib.rs       # crate root, re-exports
+│   ├── state.rs     # state vector and gate application
+│   ├── gates.rs     # gate matrices
+│   ├── circuit.rs   # circuit builder, execution, diagrams, QASM export
+│   ├── program.rs   # text program parser
+│   ├── qasm.rs      # OpenQASM 2.0 importer
+│   ├── rng.rs       # seedable xorshift64 RNG
+│   └── main.rs      # CLI
+├── programs/        # example programs (.qsim and .qasm)
+├── tests/           # integration tests
+├── docs/design.md   # design notes and status
+└── .github/         # CI
 ```
 
-## Quick start
+## Text program format
 
-```bash
-# Run the built-in demo (prepares and samples a Bell state)
-cargo run
-
-# Run a circuit described in a text program (see programs/ghz.qsim)
-cargo run -- programs/ghz.qsim
-
-# Import and run an OpenQASM 2.0 file (see programs/bell.qasm)
-cargo run -- programs/bell.qasm
-
-# Read a program from stdin, or show the program format
-printf 'qubits 1\nx 0\n' | cargo run -- -
-cargo run -- --help
-
-# Run the test suite
-cargo test
-```
-
-### Program format
-
-Circuits can be written as a small line-based text format instead of Rust —
-one instruction per line, `#` for comments:
+One instruction per line; `#` starts a comment. The first line sets the
+register size.
 
 ```text
 qubits 3
@@ -78,16 +96,15 @@ cnot 1 2        # GHZ state
 sample 1000 42
 ```
 
-Supported: `qubits N`; `h|x|y|z|s|t|sdg|tdg Q`; `rx|ry|rz|p THETA Q` (THETA is
-a float or a symbolic multiple of pi like `pi/2`, `-pi/4`, `2pi`);
-`u2 PHI LAMBDA Q`; `u3 THETA PHI LAMBDA Q`; `cnot|cz C T`;
-`crz|cp THETA C T`; `swap A B`; `toffoli C1 C2 T`; and an optional
-`sample SHOTS SEED`.
+Instructions: `qubits N`; `h|x|y|z|s|t|sdg|tdg Q`; `rx|ry|rz|p THETA Q`
+(THETA is a float or a symbolic multiple of pi like `pi/2`, `-pi/4`, `2pi`);
+`u2 PHI LAMBDA Q`; `u3 THETA PHI LAMBDA Q`; `cnot|cz C T`; `crz|cp THETA C T`;
+`swap A B`; `toffoli C1 C2 T`; and an optional `sample SHOTS SEED`.
 
-### OpenQASM 2.0 import
+## OpenQASM 2.0
 
-A file ending in `.qasm` (or starting with an `OPENQASM` header) is parsed as
-an OpenQASM 2.0 subset — enough for hand-written textbook circuits:
+A file ending in `.qasm`, or one starting with an `OPENQASM` header, is parsed
+as an OpenQASM 2.0 subset — enough for hand-written textbook circuits:
 
 ```text
 OPENQASM 2.0;
@@ -99,34 +116,33 @@ cx q[0],q[1];
 
 Supported gates: `x y z h s t sdg tdg`, `rx/ry/rz(theta)`, `u1(lambda)`
 (alias `p`), `u2(phi,lambda)`, `u3(theta,phi,lambda)`, `cx`, `cz`,
-`crz(theta)`, `cu1(lambda)` (alias `cp`), `swap`, `ccx`.
-Multiple `qreg`s map into a single flat qubit space in declaration order;
-`creg`, `barrier`, and `measure` are accepted and ignored; unsupported
-features (custom `gate`, `if`, `reset`, …) are reported rather than
-mis-simulated.
+`crz(theta)`, `cu1(lambda)` (alias `cp`), `swap`, `ccx`. Multiple `qreg`s map
+into one flat qubit space in declaration order; `creg`, `barrier`, and
+`measure` are accepted and ignored; anything outside the subset is reported
+rather than silently mis-simulated.
 
-Export goes the other way — `Circuit::to_qasm()` (and `qsimulator --emit-qasm
-<FILE>`) writes a circuit back out as OpenQASM 2.0. Any circuit using only the
-supported gates round-trips exactly through import; gates outside the subset
-(arbitrary controlled-U, C³X, …) are reported as an export error.
+`Circuit::to_qasm()` (and `qsimulator --emit-qasm <FILE>`) writes a circuit
+back out as OpenQASM 2.0. Circuits built from the supported gates round-trip
+exactly through the importer; gates with no OpenQASM 2 equivalent (an
+arbitrary controlled-U, a three-control X) return an export error.
 
-## Roadmap
+## Status
 
-Milestones are tracked in the repository issues. High level:
+The core is complete and covered by tests: simulation, the gate set above,
+measurement and sampling, the three front ends, and ASCII diagrams.
 
-1. **v0.1 — Core** (this scaffold): state vector, single-qubit gates,
-   CNOT, measurement, circuit builder.  ✅ measurement done (seedable
-   sampling, single-qubit + full-register collapse).
-2. **v0.2 — Ergonomics**: more gates (rotations, SWAP, Toffoli ✅), circuit
-   diagram printing ✅, richer CLI ✅ (text program format).
-3. **v0.3 — Interop & performance**: OpenQASM 2.0 import ✅; benchmarks,
-   sparse fast paths (planned).
+Planned:
+
+- Cross-validation against Qiskit on randomized circuits.
+- A benchmark harness, with kernel work to back any performance numbers.
+
+Design notes and a detailed status table live in [docs/design.md](docs/design.md).
 
 ## Contributing
 
-Contributions welcome. Please keep new gates/primitives covered by tests
-and run `cargo fmt` + `cargo clippy` before opening a PR.
+Keep new gates and primitives covered by tests, and run `cargo fmt` and
+`cargo clippy` before opening a pull request.
 
 ## License
 
-Licensed under the [MIT License](./LICENSE).
+[MIT](./LICENSE).

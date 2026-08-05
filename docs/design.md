@@ -23,9 +23,10 @@ application a stride-`2^q` butterfly over amplitude pairs.
 Both are done in place, so memory is a single `2^n` vector.
 
 The gate set covers the Paulis (X, Y, Z), Hadamard, the phase gates S and
-T, and the continuous rotations `rx(θ)`, `ry(θ)`, `rz(θ)`. Each rotation is
-the standard `exp(-i·θ/2·P)` for its Pauli `P`, so e.g. `rx(π)` equals X up
-to the global phase `-i`.
+T (and their daggers), the phase gate `p(λ)`, the general single-qubit
+`u2`/`u3`, and the continuous rotations `rx(θ)`, `ry(θ)`, `rz(θ)`. Each
+rotation is the standard `exp(-i·θ/2·P)` for its Pauli `P`, so e.g. `rx(π)`
+equals X up to the global phase `-i`.
 
 ## Measurement
 
@@ -49,161 +50,89 @@ exactly reproducible.
 
 ## Testing strategy
 
-Every gate has a known truth table / matrix; integration tests assert
-exact probabilities for canonical circuits (Bell state, GHZ, single-gate
-flips) within a tight epsilon.
+Every quantity is checked against an independent oracle rather than a
+hand-copied expected value. Gate matrices are asserted against their
+algebraic identities; canonical circuits (Bell, GHZ, single-gate flips)
+are asserted to exact probabilities within a tight epsilon; the OpenQASM
+importer is validated against the equivalent builder circuit and the
+exporter by round-tripping back through it.
 
----
+## Status
 
-## Current status & handoff (continue from here)
+Implemented and covered by tests:
 
-This section is a running log so any session — including one picked up from
-the Claude mobile/web app against this GitHub repo — can continue without
-extra context. Update it as features land.
+- **State vector** (`State`) — construction, amplitudes, per-index
+  probability, norm; single-, controlled-, and multi-controlled gate
+  application; qubit swap.
+- **Gates** (`gates`) — X, Y, Z, H, S, T, S†, T†, phase `p(λ)`, `u2`, `u3`,
+  and `rx`/`ry`/`rz`.
+- **Measurement** — `prob_qubit_one`, `measure_qubit`, `measure_all`, and
+  `Circuit::sample`, backed by the seedable `rng::Rng`.
+- **Circuit** (`circuit::Circuit`) — builder methods for the full gate set,
+  including `cnot`, `cz`, `crz`, `cp`, `swap`, `toffoli`, and the general
+  `cu`/`mcx`/`mcu`; execution; ASCII diagrams; OpenQASM export.
+- **Front ends** — a text program parser (`program`), an OpenQASM 2.0
+  importer (`qasm`), and a CLI (`main`).
 
-### What works today
+Over 100 unit and integration tests; CI runs fmt, clippy (`-D warnings`),
+build, and test.
 
-Everything below is implemented, tested, and pushed to `main`. CI (fmt +
-clippy `-D warnings` + build + test) is green. **102 tests** (100 unit +
-integration across 13 binaries, plus 2 doctests).
+## Module layout
 
-| Area | API | Status |
-|---|---|---|
-| State vector | `State::new/n_qubits/amplitudes/probability/norm` | ✅ |
-| Single-qubit apply | `State::apply_1q` | ✅ |
-| Controlled apply | `State::apply_controlled_1q` | ✅ |
-| Multi-controlled apply | `State::apply_multi_controlled_1q(gate, controls, target)` | ✅ |
-| SWAP | `State::swap_qubits(a, b)` | ✅ |
-| Gates | `gates::{x,y,z,h,s,t,sdg,tdg,p,u2,u3,rx,ry,rz}` | ✅ |
-| Measurement | `State::{prob_qubit_one, measure_qubit, measure_all}` | ✅ |
-| Sampling | `Circuit::sample(shots, seed) -> HashMap<usize, usize>` | ✅ |
-| RNG | `rng::Rng` (seedable xorshift64, SplitMix64 seeding) | ✅ |
-| Circuit single-qubit builders | `h,x,y,z,s,t,sdg,tdg,p,u2,u3,rx,ry,rz` | ✅ |
-| Circuit controlled builders | `cnot, cz, crz, cp, cu(gate,c,t), mcx(controls,t), mcu(gate,controls,t)` | ✅ |
-| Circuit other builders | `swap, toffoli` (toffoli now delegates to `mcx`) | ✅ |
-| Circuit rendering | `Circuit::diagram() -> String` + `Display` (ASCII diagram) | ✅ |
-| Text program format | `program::parse(&str) -> Result<Program, String>` | ✅ |
-| OpenQASM 2.0 import | `qasm::parse(&str) -> Result<Circuit, String>` (subset) | ✅ |
-| OpenQASM 2.0 export | `Circuit::to_qasm() -> Result<String, String>` | ✅ |
-| CLI | `qsimulator [FILE\|-\|--emit-qasm FILE\|--help]` | ✅ |
+- `src/state.rs` — the state vector, gate application (`apply_1q`,
+  `apply_controlled_1q`, `apply_multi_controlled_1q`), measurement, and
+  `swap_qubits`.
+- `src/gates.rs` — the 2×2 gate matrices (`type Gate = [[Complex64; 2]; 2]`)
+  and their unit tests.
+- `src/circuit.rs` — the `Op` enum, the `Circuit` builder, `run`, `sample`,
+  `diagram`, and `to_qasm`.
+- `src/program.rs` — the text program parser (`parse`, `Program`,
+  `SampleSpec`); `parse_angle` is shared with the QASM importer.
+- `src/qasm.rs` — the OpenQASM 2.0 subset importer.
+- `src/rng.rs` — the seedable RNG.
+- `src/main.rs` — the CLI; dispatches to the QASM importer by `.qasm`
+  extension or `OPENQASM` header, otherwise the text format.
+- `tests/` — one file per area: measurement, rotations, swap, toffoli, the
+  builder groups, diagrams, GHZ, and QASM import/export.
 
-### File map
+`Op` variants carry a `label` and `params` used by `diagram()` and
+`to_qasm()`; neither affects execution. A new gate sets both.
 
-- `src/state.rs` — state vector + all `apply_*`, measurement, `swap_qubits`.
-- `src/gates.rs` — 2x2 gate matrices (`type Gate = [[Complex64; 2]; 2]`),
-  plus a unit-test module for the rotations.
-- `src/circuit.rs` — `Op` enum (`Single`, `Controlled`, `Swap`,
-  `MultiControlled`), the `Circuit` builder, `run`, and `sample`.
-- `src/rng.rs` — the RNG and its unit tests.
-- `src/program.rs` — text program parser (`parse`, `Program`, `SampleSpec`);
-  `parse_angle` is `pub(crate)` and shared with the QASM importer.
-- `src/qasm.rs` — OpenQASM 2.0 subset importer (`parse -> Circuit`).
-- `src/lib.rs` — module wiring and re-exports (`Circuit`, `State`, `Rng`).
-- `src/main.rs` — the CLI: built-in demo, or parse+run a program/`.qasm`/stdin
-  (dispatches to `qasm` by `.qasm` extension or `OPENQASM` header).
-- `programs/ghz.qsim` — sample text program; `programs/bell.qasm` — sample QASM.
-- `tests/` — `bell_state.rs`, `measurement.rs`, `rotations.rs`, `swap.rs`,
-  `toffoli.rs`, `single_qubit_builders.rs` (y/s/t), `controlled_builders.rs`
-  (cz/cu/mcx/mcu), `diagram.rs` (ASCII rendering), `program.rs` (parser),
-  `ghz.rs` (3- and 4-qubit GHZ probabilities + sampling), `qasm.rs`
-  (OpenQASM import, oracle-checked against the builder API), `qasm_export.rs`
-  (export + round-trip through import).
+## Conventions
 
-Note: `Op` variants now carry a `label: &'static str` used only by
-`diagram()`; it never affects execution (`run` ignores it). New gate
-builders should pass a short static label (e.g. `"H"`, `"RX"`).
+These are load-bearing; changing them breaks results silently.
 
-### Frozen conventions (do not change silently)
+- **Little-endian qubit order** — bit `q` of a basis index is qubit `q`. The
+  2-qubit index `0b10` means qubit 1 is |1> and qubit 0 is |0>.
+- **Gate storage** is row-major `[[m00, m01], [m10, m11]]` over `Complex64`.
+- **Rotations** are `exp(-i·θ/2·P)`, so `R_axis(π)` equals its Pauli up to the
+  global phase `-i` (the tests assert this).
+- **RNG output is a pure function of the seed.** Reproducibility depends on
+  the xorshift64 recurrence and SplitMix64 seeding staying fixed.
+- Controls must differ from their target, and each amplitude pair is touched
+  once, from the target-bit-0 side.
 
-- **Little-endian qubit order**: bit `q` of a basis index is qubit `q`.
-  A 2-qubit index `0b10` means qubit 1 is |1>, qubit 0 is |0>.
-- **Gate storage** is row-major `[[m00, m01], [m10, m11]]`, `Complex64`.
-- **Rotations** are `exp(-i·θ/2·P)`; `R_axis(π)` equals its Pauli up to the
-  global phase `-i` (tests assert exactly this).
-- **RNG is deterministic in its seed** — reproducibility depends on it, so
-  keep the xorshift64 recurrence and SplitMix64 seeding stable. Changing
-  them will break `same_seed_is_reproducible` and any golden values.
-- Controls must differ from the target (asserted); pairs are always
-  processed once via the target-bit-0 side.
-
-### Dev commands
+## Development
 
 ```bash
 cargo fmt --all -- --check
 cargo clippy --all-targets -- -D warnings
 cargo build
 cargo test
-cargo run            # the Bell-state sampling demo
 ```
 
-New functionality must land with its test in the same commit, and all four
-checks above must pass before committing.
+New functionality lands with its test in the same commit, and all four checks
+pass before committing. Adding a gate touches its matrix in `gates.rs`, a
+builder in `circuit.rs` (and an `Op` arm if it needs new state machinery), the
+two front-end maps if it should be importable, and both a matrix/truth-table
+unit test and a circuit-level integration test.
 
-### Recently done
+## Roadmap
 
-- ✅ **More builder coverage** (was #1) — `y`, `s`, `t` single-qubit builders
-  plus `cz` (controlled-Z) and `cu(gate, control, target)` (arbitrary
-  controlled-U) on `Circuit`. Tested in `tests/single_qubit_builders.rs` and
-  `tests/controlled_builders.rs`.
-- ✅ **Arbitrary controlled-U builder** (was #2) — `mcu(gate, controls, target)`
-  and `mcx(controls, target)` on `Circuit`; `toffoli` now delegates to `mcx`.
-  Tested in `tests/controlled_builders.rs` (incl. a 3-control C3X).
-- ✅ **Circuit diagram printing** (was #1) — `Circuit::diagram()` and a
-  `Display` impl render an ASCII diagram (one column per op, `*` controls,
-  `|` connectors, `x` for SWAP). Needed a `label` on each `Op`. Tested in
-  `tests/diagram.rs`; the demo in `main.rs` prints the circuit.
-- ✅ **Richer CLI** (was #1) — a text program format (`src/program.rs`:
-  `qubits N`, gate lines, optional `sample SHOTS SEED`, `#` comments, pi-form
-  angles) parsed into a `Program`. `main.rs` runs a file, stdin (`-`), or the
-  built-in demo, with `--help`. Tested in `tests/program.rs`; sample program
-  at `programs/ghz.qsim`. This also covers a GHZ end-to-end path.
-
-- ✅ **GHZ + multi-qubit fixtures** — `tests/ghz.rs` asserts 3- and 4-qubit
-  GHZ probabilities and sampling (only 000…/111… outcomes). Salvaged from the
-  superseded PR #2 branch, which was an older reimplementation of builders/
-  Display that `main` already had.
-- ✅ **OpenQASM 2.0 import** — `src/qasm.rs` parses a hand-written subset
-  (header/include, one or more `qreg`, the core gate set incl. `cx/cz/ccx/
-  swap` and `rx/ry/rz`, `//` and `/* */` comments; `creg/barrier/measure`
-  ignored; unsupported features error out). Wired into the CLI by `.qasm`
-  extension / `OPENQASM` header. Oracle-tested in `tests/qasm.rs` against the
-  equivalent builder circuits; sample at `programs/bell.qasm`.
-
-- ✅ **OpenQASM 2.0 export** — `Circuit::to_qasm()` emits a circuit back to
-  OpenQASM (header + `qreg` + one gate per line), lossless for the supported
-  subset and round-tripping through `qasm::parse` (rotation angles at full
-  `f64` precision). Gates outside the subset (arbitrary controlled-U, C³X)
-  return an export error. To support it, `Op::Single` now records `param`
-  (rotation angle). CLI: `--emit-qasm`. Tested in `tests/qasm_export.rs`.
-
-- ✅ **More gates (part 1)** — `sdg` (S†), `tdg` (T†), and the phase gate
-  `p(λ)` (OpenQASM `u1`). Added to `gates.rs` + builders + both the native
-  program format and the QASM import/export maps. Tested in
-  `tests/single_qubit_builders.rs`, `tests/program.rs`, `tests/qasm*.rs`, and
-  `gates.rs` unit tests.
-- ✅ **More gates (part 2a: general single-qubit)** — `u3(θ,φ,λ)` and
-  `u2(φ,λ)`. Reshaped `Op::Single`'s param slot from `Option<f64>` to
-  `params: Vec<f64>` (0–3 angles); export joins them via `format_params`. Full
-  import/export/native-format support, oracle-tested.
-- ✅ **More gates (part 2b: controlled rotations)** — `crz(θ)` and controlled
-  phase `cp(λ)` (OpenQASM `cu1`). Added `params` to `Op::Controlled` mirroring
-  the `Op::Single` reshape; export emits `crz`/`cu1`. Full import/export/
-  native-format support, oracle-tested. The QASM subset is now `u2/u3/u1`,
-  `rx/ry/rz`, `sdg/tdg`, `cx/cz/crz/cu1/swap/ccx`.
-
-### Suggested next steps (v0.3, not yet started)
-
-Roughly in priority order; none of these exist yet:
-
-1. **Benchmarks** — a committed harness timing gate application across qubit
-   counts (state a fixed protocol; no perf claims without it). Only meaningful
-   alongside real optimization work (blocked/branch-free kernel, OpenMP-style
-   parallelism, or a sparse fast path).
-2. **`cu3` / arbitrary controlled-U in QASM** — export currently errors on
-   `cu`/`mcu`; a `cu3(θ,φ,λ)` emit + import would round-trip them.
-3. **Registers by name in export** — export currently uses a single flat
-   `qreg q[n]`; preserving original register names would be nicer (cosmetic).
-
-When adding a gate: add the matrix in `gates.rs`, a builder in `circuit.rs`
-(+ `Op` variant and `run` arm if it needs new state machinery), and both a
-unit test (matrix/truth-table) and an integration test (circuit behavior).
+- Cross-validation against Qiskit on randomized circuits (state fidelity to
+  1e-9), over the OpenQASM bridge.
+- A benchmark harness with a fixed protocol, alongside kernel work — a
+  branch-free blocked update, then parallelism — so any performance number is
+  reproducible.
+- `cu3` import and export, to round-trip the arbitrary controlled-U gates that
+  currently have no OpenQASM 2 equivalent.
