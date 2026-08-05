@@ -5,6 +5,11 @@
 # Cargo lock is kept for binaries; remove next line if publishing a library only
 # Cargo.lock
 
+# Python (cross-validation harness)
+__pycache__/
+*.pyc
+.venv/
+
 # Editor / OS
 .DS_Store
 *.swp

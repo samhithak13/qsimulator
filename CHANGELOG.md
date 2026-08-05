@@ -19,7 +19,11 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   importer and exporter, with a CLI over both.
 - Worked examples (GHZ, Grover, teleportation) and a broad oracle-based test
   suite.
+- `--statevector` CLI flag that prints the final amplitudes as JSON.
+- Cross-validation against Qiskit (`crossval/`): random circuits over the
+  shared gate set match Qiskit's state vectors to floating-point precision.
 - CI on Linux and macOS: formatting, clippy (`-D warnings`), build, test,
-  documentation (`-D warnings`), and example execution.
+  documentation (`-D warnings`), example execution, and the Qiskit
+  cross-validation.
 
 [Unreleased]: https://github.com/samhithak13/qsimulator/commits/main

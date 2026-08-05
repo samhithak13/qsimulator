@@ -37,6 +37,18 @@ fn main() -> ExitCode {
                 ExitCode::FAILURE
             }
         },
+        // `--statevector FILE`: print the final amplitudes as JSON, for
+        // machine consumption (e.g. the Qiskit cross-validation harness).
+        [flag, path] if flag == "--statevector" => match load_circuit(path) {
+            Ok((circuit, _sample)) => {
+                print_statevector(&circuit.run());
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("error: {e}");
+                ExitCode::FAILURE
+            }
+        },
         [path] => match load_circuit(path) {
             Ok((circuit, sample)) => {
                 run_circuit(&circuit, sample);
@@ -77,6 +89,20 @@ fn read_source(path: &str) -> std::io::Result<String> {
     } else {
         std::fs::read_to_string(path)
     }
+}
+
+/// Print the final state as a JSON array of `[re, im]` amplitude pairs, in
+/// little-endian basis-state order. Full `f64` precision, one flat line.
+fn print_statevector(state: &qsimulator::State) {
+    let mut out = String::from("[");
+    for (i, a) in state.amplitudes().iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        out.push_str(&format!("[{},{}]", a.re, a.im));
+    }
+    out.push(']');
+    println!("{out}");
 }
 
 /// Print the circuit diagram, the final-state probabilities, and (if a
@@ -145,7 +171,8 @@ USAGE:
     qsimulator                 Run the built-in Bell-state demo
     qsimulator <FILE>          Parse and run a program file (.qasm = OpenQASM)
     qsimulator -               Read a program from stdin
-    qsimulator --emit-qasm <FILE>  Print the circuit as OpenQASM 2.0
+    qsimulator --emit-qasm <FILE>   Print the circuit as OpenQASM 2.0
+    qsimulator --statevector <FILE> Print final amplitudes as JSON
     qsimulator --help          Show this help
 
 An input is treated as OpenQASM 2.0 if it ends in `.qasm` or begins with an

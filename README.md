@@ -70,8 +70,15 @@ value:
   00 or 11, measuring one half of a pair fixes the other, and the same seed
   reproduces the same histogram.
 
-`cargo test` runs 100+ unit and integration tests. CI also enforces
-`cargo fmt --check` and `cargo clippy -D warnings` on Linux.
+Beyond the in-tree tests, [`crossval/`](crossval) checks qsimulator against
+Qiskit: it runs hundreds of random circuits over the shared gate set through
+both engines (via OpenQASM) and confirms the state vectors match to
+floating-point precision. See [crossval/README.md](crossval/README.md).
+
+`cargo test` runs 100+ unit and integration tests. CI runs the full suite on
+Linux and macOS, enforces `cargo fmt --check`, `cargo clippy -D warnings`, and
+a warning-clean `cargo doc`, executes the examples, and runs the Qiskit
+cross-validation.
 
 ## Project layout
 
@@ -138,11 +145,11 @@ arbitrary controlled-U, a three-control X) return an export error.
 ## Status
 
 The core is complete and covered by tests: simulation, the gate set above,
-measurement and sampling, the three front ends, and ASCII diagrams.
+measurement and sampling, the three front ends, ASCII diagrams, and
+cross-validation against Qiskit.
 
 Planned:
 
-- Cross-validation against Qiskit on randomized circuits.
 - A benchmark harness, with kernel work to back any performance numbers.
 
 Design notes and a detailed status table live in [docs/design.md](docs/design.md).

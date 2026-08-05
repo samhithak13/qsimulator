@@ -57,6 +57,12 @@ are asserted to exact probabilities within a tight epsilon; the OpenQASM
 importer is validated against the equivalent builder circuit and the
 exporter by round-tripping back through it.
 
+Beyond the in-tree tests, `crossval/compare.py` validates the engine against
+Qiskit: it runs random circuits over the shared gate set through both
+implementations (via OpenQASM) and compares the state vectors up to global
+phase. The `--statevector` CLI flag exposes the final amplitudes as JSON for
+this harness.
+
 ## Status
 
 Implemented and covered by tests:
@@ -129,8 +135,6 @@ unit test and a circuit-level integration test.
 
 ## Roadmap
 
-- Cross-validation against Qiskit on randomized circuits (state fidelity to
-  1e-9), over the OpenQASM bridge.
 - A benchmark harness with a fixed protocol, alongside kernel work — a
   branch-free blocked update, then parallelism — so any performance number is
   reproducible.
