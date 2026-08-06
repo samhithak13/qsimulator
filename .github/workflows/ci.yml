@@ -124,6 +124,9 @@ jobs:
   fuzz:
     name: Fuzz parsers
     runs-on: ubuntu-latest
+    # cargo-fuzz sets its own sanitizer RUSTFLAGS; don't append the workflow's.
+    env:
+      RUSTFLAGS: ""
     steps:
       - uses: actions/checkout@v4
 
@@ -134,9 +137,11 @@ jobs:
         with:
           tool: cargo-fuzz
 
+      # Pin the gnu target: it has prebuilt std and sanitizer runtime, unlike
+      # the musl target cargo-fuzz otherwise picks on the runner.
       - name: Fuzz the OpenQASM parser
-        run: cargo fuzz run qasm_parse -- -max_total_time=45
+        run: cargo fuzz run qasm_parse --target x86_64-unknown-linux-gnu -- -max_total_time=45
 
       - name: Fuzz the text program parser
-        run: cargo fuzz run program_parse -- -max_total_time=45
+        run: cargo fuzz run program_parse --target x86_64-unknown-linux-gnu -- -max_total_time=45
 
