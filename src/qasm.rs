@@ -56,6 +56,13 @@ fn parse_inner(src: &str) -> Result<Circuit, String> {
             if regs.contains_key(&name) {
                 return Err(format!("duplicate register `{name}`"));
             }
+            // Bound each register and the running total *before* accumulating,
+            // so a huge size cannot overflow `total`.
+            if size > MAX_QUBITS || total + size > MAX_QUBITS {
+                return Err(format!(
+                    "register total exceeds the maximum of {MAX_QUBITS} qubits"
+                ));
+            }
             regs.insert(
                 name,
                 Reg {
@@ -68,11 +75,6 @@ fn parse_inner(src: &str) -> Result<Circuit, String> {
     }
     if total == 0 {
         return Err("no `qreg` declared".to_string());
-    }
-    if total > MAX_QUBITS {
-        return Err(format!(
-            "{total} qubits exceeds the maximum of {MAX_QUBITS}"
-        ));
     }
     let mut circuit = Circuit::new(total);
 

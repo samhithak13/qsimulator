@@ -228,6 +228,17 @@ fn error_register_too_large() {
     assert!(err.contains("exceeds the maximum"), "{err}");
 }
 
+// Regression (found by cargo fuzz): summing multiple huge register sizes used
+// to overflow `total` and panic under debug assertions.
+#[test]
+fn error_register_sizes_do_not_overflow() {
+    let huge = usize::MAX;
+    let err = qasm::parse(&format!("qreg a[{huge}];\nqreg b[{huge}];\n"))
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("exceeds the maximum"), "{err}");
+}
+
 #[test]
 fn bundled_bell_qasm_matches_builder() {
     let src = include_str!("../programs/bell.qasm");
