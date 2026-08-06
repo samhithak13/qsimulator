@@ -27,6 +27,11 @@ use crate::program::parse_angle;
 use crate::Circuit;
 use std::collections::HashMap;
 
+/// Largest register the importer will build. A dense state vector needs
+/// `16·2^n` bytes, so this caps memory and stops a malformed huge `qreg` from
+/// aborting the process on allocation.
+const MAX_QUBITS: usize = 30;
+
 /// Parse an OpenQASM 2.0 subset program into a [`Circuit`], or return a
 /// human-readable error naming the offending statement.
 pub fn parse(src: &str) -> Result<Circuit, String> {
@@ -58,6 +63,11 @@ pub fn parse(src: &str) -> Result<Circuit, String> {
     }
     if total == 0 {
         return Err("no `qreg` declared".to_string());
+    }
+    if total > MAX_QUBITS {
+        return Err(format!(
+            "{total} qubits exceeds the maximum of {MAX_QUBITS}"
+        ));
     }
     let mut circuit = Circuit::new(total);
 
@@ -101,6 +111,9 @@ fn parse_reg_decl(stmt: &str) -> Result<(String, usize), String> {
     let close = rest
         .find(']')
         .ok_or_else(|| format!("register declaration needs `]`: `{stmt}`"))?;
+    if close < open {
+        return Err(format!("malformed register declaration `{stmt}`"));
+    }
     let name = rest[..open].trim().to_string();
     if name.is_empty() {
         return Err(format!("register needs a name: `{stmt}`"));
@@ -306,6 +319,9 @@ fn parse_qubit_ref(op: &str, regs: &HashMap<String, Reg>) -> Result<usize, Strin
     let close = op
         .find(']')
         .ok_or_else(|| format!("qubit reference missing `]`: `{op}`"))?;
+    if close < open {
+        return Err(format!("malformed qubit reference `{op}`"));
+    }
     let name = op[..open].trim();
     let index: usize = op[open + 1..close]
         .trim()

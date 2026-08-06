@@ -29,6 +29,12 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Optional `parallel` feature: a rayon-backed multithreaded `apply_1q`
   (~1.5–2.4x on an Apple M1), off by default so the core stays dependency-free.
 
+### Fixed
+- The OpenQASM importer no longer panics on malformed bracket order (a `qreg`
+  or qubit reference like `q]0[`); it now returns an error.
+- Both parsers reject a register larger than 30 qubits instead of aborting the
+  process on allocation.
+
 ### Changed
 - Restructured `apply_1q` into a bounds-check-free walk over `chunks_exact_mut`
   and hoisted gate-matrix entries into locals across the gate kernels; roughly

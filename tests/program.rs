@@ -95,6 +95,13 @@ fn error_qubit_out_of_range() {
     assert!(err.contains("line 2"), "{err}");
 }
 
+// Regression: a huge register used to abort the process on allocation.
+#[test]
+fn error_too_many_qubits() {
+    let err = program::parse("qubits 40\n").unwrap_err();
+    assert!(err.contains("exceeds the maximum"), "{err}");
+}
+
 #[test]
 fn error_unknown_instruction() {
     let err = program::parse("qubits 2\nfoo 0\n").unwrap_err();

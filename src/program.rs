@@ -22,6 +22,10 @@
 use crate::Circuit;
 use std::f64::consts::PI;
 
+/// Largest register a program may declare, matching the OpenQASM importer.
+/// Guards against a malformed huge `qubits N` aborting on allocation.
+const MAX_QUBITS: usize = 30;
+
 /// A parsed program: the built circuit plus an optional `sample` directive.
 #[derive(Debug, Clone)]
 pub struct Program {
@@ -67,6 +71,11 @@ pub fn parse(src: &str) -> Result<Program, String> {
                 .map_err(|_| at(format!("invalid qubit count `{}`", toks[1])))?;
             if n == 0 {
                 return Err(at("qubit count must be >= 1".into()));
+            }
+            if n > MAX_QUBITS {
+                return Err(at(format!(
+                    "qubit count {n} exceeds the maximum of {MAX_QUBITS}"
+                )));
             }
             circuit = Some(Circuit::new(n));
             continue;

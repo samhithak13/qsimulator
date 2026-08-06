@@ -193,6 +193,27 @@ fn error_unknown_register() {
     assert!(err.contains("unknown register `r`"), "{err}");
 }
 
+// Regression: malformed bracket order used to panic (slice out of order)
+// instead of returning an error.
+#[test]
+fn error_reversed_brackets_in_qreg() {
+    let err = qasm::parse("qreg q]3[;\n").unwrap_err();
+    assert!(err.contains("malformed register declaration"), "{err}");
+}
+
+#[test]
+fn error_reversed_brackets_in_operand() {
+    let err = qasm::parse("qreg q[2];\nx q]0[;\n").unwrap_err();
+    assert!(err.contains("malformed qubit reference"), "{err}");
+}
+
+// Regression: a huge register used to abort the process on allocation.
+#[test]
+fn error_register_too_large() {
+    let err = qasm::parse("qreg q[40];\n").unwrap_err();
+    assert!(err.contains("exceeds the maximum"), "{err}");
+}
+
 #[test]
 fn bundled_bell_qasm_matches_builder() {
     let src = include_str!("../programs/bell.qasm");
