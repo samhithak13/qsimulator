@@ -75,10 +75,15 @@ Qiskit: it runs hundreds of random circuits over the shared gate set through
 both engines (via OpenQASM) and confirms the state vectors match to
 floating-point precision. See [crossval/README.md](crossval/README.md).
 
+The parsers are fuzzed with [`cargo fuzz`](fuzz) (targets under `fuzz/`), with
+a stable-toolchain random-input smoke test in `tests/robustness.rs` for
+continuous coverage.
+
 `cargo test` runs 100+ unit and integration tests. CI runs the full suite on
 Linux and macOS, enforces `cargo fmt --check`, `cargo clippy -D warnings`, and
-a warning-clean `cargo doc`, executes the examples, and runs the Qiskit
-cross-validation.
+a warning-clean `cargo doc`, executes the examples, runs the Qiskit
+cross-validation, fuzzes the parsers, and audits dependencies with
+`cargo audit`.
 
 ## Benchmarks
 

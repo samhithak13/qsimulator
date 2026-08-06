@@ -110,3 +110,33 @@ jobs:
       - name: Compare state vectors
         run: python crossval/compare.py --trials 300 --seed 0
 
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+      - name: Audit dependencies
+        run: cargo audit
+
+  fuzz:
+    name: Fuzz parsers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install nightly toolchain
+        uses: dtolnay/rust-toolchain@nightly
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-fuzz
+
+      - name: Fuzz the OpenQASM parser
+        run: cargo fuzz run qasm_parse -- -max_total_time=45
+
+      - name: Fuzz the text program parser
+        run: cargo fuzz run program_parse -- -max_total_time=45
+

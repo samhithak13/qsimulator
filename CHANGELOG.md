@@ -28,6 +28,9 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `cargo bench` throughput harness (`benches/throughput.rs`).
 - Optional `parallel` feature: a rayon-backed multithreaded `apply_1q`
   (~1.5–2.4x on an Apple M1), off by default so the core stays dependency-free.
+- `cargo fuzz` targets for both parsers (`fuzz/`), a stable-toolchain
+  random-input robustness test (`tests/robustness.rs`), and CI jobs for
+  fuzzing and `cargo audit` dependency scanning.
 
 ### Fixed
 - The OpenQASM importer no longer panics on malformed bracket order (a `qreg`

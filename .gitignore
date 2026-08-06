@@ -10,6 +10,12 @@ __pycache__/
 *.pyc
 .venv/
 
+# cargo-fuzz build output and findings
+/fuzz/target
+/fuzz/corpus
+/fuzz/artifacts
+/fuzz/Cargo.lock
+
 # Editor / OS
 .DS_Store
 *.swp
