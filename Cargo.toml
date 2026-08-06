@@ -6,9 +6,12 @@ rust-version = "1.80"
 description = "A noiseless state-vector quantum circuit simulator with OpenQASM 2.0 support"
 license = "MIT"
 repository = "https://github.com/samhithak13/qsimulator"
+documentation = "https://docs.rs/qsimulator"
 readme = "README.md"
 keywords = ["quantum", "simulator", "quantum-computing", "circuit"]
 categories = ["science", "simulation"]
+# Dev and CI tooling, not part of the published library.
+exclude = ["/fuzz", "/crossval", "/.github"]
 
 [dependencies]
 num-complex = "0.4"

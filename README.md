@@ -174,8 +174,9 @@ Design notes and a detailed status table live in [docs/design.md](docs/design.md
 
 ## Contributing
 
-Keep new gates and primitives covered by tests, and run `cargo fmt` and
-`cargo clippy` before opening a pull request.
+See [CONTRIBUTING.md](CONTRIBUTING.md). In short: keep new gates and primitives
+covered by tests, and run `cargo fmt` and `cargo clippy` before opening a pull
+request.
 
 ## License
 
