@@ -39,3 +39,22 @@ into a bounds-check-free walk over `chunks_exact_mut` split into the target
 bit's `|0>`/`|1>` halves, and hoists the gate-matrix entries into locals in
 all three kernels. The largest gain is on a low target qubit, where the old
 kernel's small stride blocks had the most per-iteration overhead.
+
+## Parallel kernel
+
+Building with `--features parallel` runs `apply_1q` across threads (rayon).
+Same machine, `n = 22`:
+
+```bash
+cargo bench --features parallel
+```
+
+| Case (n = 22)            | Serial | Parallel |
+|--------------------------|-------:|---------:|
+| `apply_1q`, target = 0   |  ~500  |   ~760   |
+| `apply_1q`, target = n-1 |  ~510  |  ~1200   |
+
+The kernel parallelizes over blocks for a low target qubit and within a block
+for a high one. The speedup is sublinear in the eight cores because a
+state-vector sweep is memory-bandwidth bound; the high target case, which
+splits into two large contiguous halves, scales best (~2.4x).

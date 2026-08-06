@@ -88,6 +88,10 @@ walk over the target bit's `|0>`/`|1>` halves — are in
 [benches/README.md](benches/README.md). Numbers are machine-dependent, so
 regenerate them on the target machine rather than trusting a checked-in figure.
 
+An optional `parallel` feature runs the single-qubit kernel across threads
+(via rayon); it is off by default so the core has no dependency beyond
+`num-complex`. Enable it with `cargo build --features parallel`.
+
 ## Project layout
 
 ```
@@ -154,12 +158,12 @@ arbitrary controlled-U, a three-control X) return an export error.
 
 The core is complete and covered by tests: simulation, the gate set above,
 measurement and sampling, the three front ends, ASCII diagrams,
-cross-validation against Qiskit, and a throughput benchmark harness.
+cross-validation against Qiskit, a throughput benchmark harness, and an
+optional parallel gate kernel.
 
 Planned:
 
-- Feature-gated parallel gate kernels (kept off by default so the core stays
-  dependency-free).
+- `cu3` import and export, to round-trip arbitrary controlled-U gates.
 
 Design notes and a detailed status table live in [docs/design.md](docs/design.md).
 

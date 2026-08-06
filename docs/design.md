@@ -23,8 +23,14 @@ application a stride-`2^q` butterfly over amplitude pairs.
 Both are done in place, so memory is a single `2^n` vector. `apply_1q` walks
 the amplitude vector as `chunks_exact_mut(2·2^target)` and splits each block
 into the target bit's `|0>`/`|1>` halves, so the inner loop is bounds-check
-free; the gate-matrix entries are hoisted into locals in every kernel. See
-`benches/` for the throughput harness and measured effect.
+free; the gate-matrix entries are hoisted into locals in every kernel.
+
+With the optional `parallel` feature, `apply_1q` runs across threads via
+rayon: it parallelizes over blocks for a low target qubit (coarse tiles, to
+keep tasks large) and within a block's two halves for a high one. The feature
+is off by default, so the default build keeps its single `num-complex`
+dependency and the `forbid(unsafe_code)` guarantee (rayon's safe parallel
+iterators need no unsafe here). See `benches/` for the harness and numbers.
 
 The gate set covers the Paulis (X, Y, Z), Hadamard, the phase gates S and
 T (and their daggers), the phase gate `p(λ)`, the general single-qubit
@@ -139,7 +145,7 @@ unit test and a circuit-level integration test.
 
 ## Roadmap
 
-- Feature-gated parallelism for the gate kernels (a safe, `rayon`-based
-  backend behind a `parallel` feature so the default stays dependency-free).
+- Extend the `parallel` feature to the controlled kernels (currently only
+  `apply_1q` is threaded).
 - `cu3` import and export, to round-trip the arbitrary controlled-U gates that
   currently have no OpenQASM 2 equivalent.

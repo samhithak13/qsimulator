@@ -38,6 +38,9 @@ jobs:
       - name: Test
         run: cargo test --verbose
 
+      - name: Test (parallel feature)
+        run: cargo test --features parallel --verbose
+
       - name: Run examples
         run: |
           cargo run --example ghz
@@ -69,6 +72,9 @@ jobs:
 
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings
+
+      - name: Clippy (parallel feature)
+        run: cargo clippy --all-targets --features parallel -- -D warnings
 
       - name: Docs
         run: cargo doc --no-deps

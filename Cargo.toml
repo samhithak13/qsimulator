@@ -2,7 +2,7 @@
 name = "qsimulator"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.78"
+rust-version = "1.80"
 description = "A noiseless state-vector quantum circuit simulator with OpenQASM 2.0 support"
 license = "MIT"
 repository = "https://github.com/samhithak13/qsimulator"
@@ -12,6 +12,12 @@ categories = ["science", "simulation"]
 
 [dependencies]
 num-complex = "0.4"
+rayon = { version = "1", optional = true }
+
+[features]
+# Parallelize the single-qubit gate kernel with rayon. Off by default so the
+# core stays dependency-free.
+parallel = ["dep:rayon"]
 
 [dev-dependencies]
 approx = "0.5"

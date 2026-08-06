@@ -26,6 +26,8 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   documentation (`-D warnings`), example execution, and the Qiskit
   cross-validation.
 - `cargo bench` throughput harness (`benches/throughput.rs`).
+- Optional `parallel` feature: a rayon-backed multithreaded `apply_1q`
+  (~1.5–2.4x on an Apple M1), off by default so the core stays dependency-free.
 
 ### Changed
 - Restructured `apply_1q` into a bounds-check-free walk over `chunks_exact_mut`

@@ -2,6 +2,8 @@
 
 use crate::rng::Rng;
 use num_complex::Complex64;
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 
 /// The full state vector of an `n`-qubit quantum register.
 ///
@@ -42,18 +44,55 @@ impl State {
     /// and within each block the low and high halves are the `|0>`/`|1>`
     /// partners of the target bit. Iterating over those halves with slice
     /// iterators keeps the inner loop bounds-check-free.
+    ///
+    /// With the `parallel` feature this runs across threads via rayon,
+    /// parallelizing over blocks for a low target qubit and within a block for
+    /// a high one — whichever axis carries more work.
     pub fn apply_1q(&mut self, gate: &[[Complex64; 2]; 2], target: usize) {
         assert!(target < self.n_qubits, "target qubit out of range");
         // Hoist the matrix entries so the inner loop does not reload them.
         let (g00, g01) = (gate[0][0], gate[0][1]);
         let (g10, g11) = (gate[1][0], gate[1][1]);
+        let butterfly = move |a: &mut Complex64, b: &mut Complex64| {
+            let (x, y) = (*a, *b);
+            *a = g00 * x + g01 * y;
+            *b = g10 * x + g11 * y;
+        };
         let step = 1usize << target;
-        for block in self.amps.chunks_exact_mut(step << 1) {
-            let (low, high) = block.split_at_mut(step);
-            for (a, b) in low.iter_mut().zip(high.iter_mut()) {
-                let (x, y) = (*a, *b);
-                *a = g00 * x + g01 * y;
-                *b = g10 * x + g11 * y;
+        let block = step << 1;
+
+        #[cfg(feature = "parallel")]
+        {
+            // A coarse tile so parallel tasks are large enough to amortize
+            // scheduling overhead (a block can be as small as two amplitudes).
+            const TILE: usize = 1 << 14;
+            if block <= TILE {
+                // Low target: parallelize over tiles, each holding many blocks.
+                self.amps.par_chunks_mut(TILE).for_each(|region| {
+                    for blk in region.chunks_exact_mut(block) {
+                        let (low, high) = blk.split_at_mut(step);
+                        low.iter_mut()
+                            .zip(high.iter_mut())
+                            .for_each(|(a, b)| butterfly(a, b));
+                    }
+                });
+            } else {
+                // High target: few large blocks, so parallelize their halves.
+                for blk in self.amps.chunks_exact_mut(block) {
+                    let (low, high) = blk.split_at_mut(step);
+                    low.par_iter_mut()
+                        .zip(high.par_iter_mut())
+                        .for_each(|(a, b)| butterfly(a, b));
+                }
+            }
+        }
+        #[cfg(not(feature = "parallel"))]
+        {
+            for blk in self.amps.chunks_exact_mut(block) {
+                let (low, high) = blk.split_at_mut(step);
+                low.iter_mut()
+                    .zip(high.iter_mut())
+                    .for_each(|(a, b)| butterfly(a, b));
             }
         }
     }
