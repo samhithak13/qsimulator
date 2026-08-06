@@ -36,6 +36,9 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   process on allocation.
 
 ### Changed
+- The parsers and exporter now return typed errors implementing
+  `std::error::Error` (`ParseError`, `ExportError`) instead of `String`, so the
+  library composes with `?` and `Box<dyn Error>`.
 - Restructured `apply_1q` into a bounds-check-free walk over `chunks_exact_mut`
   and hoisted gate-matrix entries into locals across the gate kernels; roughly
   1.3–1.6× higher single-gate throughput on an Apple M1 (see benches/README.md).

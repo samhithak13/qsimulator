@@ -102,7 +102,9 @@ fn imports_u2_and_u3() {
 
 #[test]
 fn error_u3_wrong_angle_count() {
-    let err = qasm::parse("qreg q[1];\nu3(pi,0) q[0];\n").unwrap_err();
+    let err = qasm::parse("qreg q[1];\nu3(pi,0) q[0];\n")
+        .unwrap_err()
+        .to_string();
     assert!(err.contains("3 angle(s)"), "{err}");
 }
 
@@ -159,13 +161,17 @@ qreg q[1]; /* inline */ x q[0]; // trailing
 
 #[test]
 fn error_unsupported_gate() {
-    let err = qasm::parse("qreg q[1];\nsx q[0];\n").unwrap_err();
+    let err = qasm::parse("qreg q[1];\nsx q[0];\n")
+        .unwrap_err()
+        .to_string();
     assert!(err.contains("unsupported gate `sx`"), "{err}");
 }
 
 #[test]
 fn error_unsupported_feature() {
-    let err = qasm::parse("qreg q[1];\nreset q[0];\n").unwrap_err();
+    let err = qasm::parse("qreg q[1];\nreset q[0];\n")
+        .unwrap_err()
+        .to_string();
     assert!(
         err.contains("unsupported OpenQASM feature `reset`"),
         "{err}"
@@ -174,7 +180,9 @@ fn error_unsupported_feature() {
 
 #[test]
 fn error_no_qreg() {
-    let err = qasm::parse("OPENQASM 2.0;\nh q[0];\n").unwrap_err();
+    let err = qasm::parse("OPENQASM 2.0;\nh q[0];\n")
+        .unwrap_err()
+        .to_string();
     assert!(
         err.contains("no `qreg`") || err.contains("unknown register"),
         "{err}"
@@ -183,13 +191,17 @@ fn error_no_qreg() {
 
 #[test]
 fn error_qubit_out_of_range() {
-    let err = qasm::parse("qreg q[2];\nx q[5];\n").unwrap_err();
+    let err = qasm::parse("qreg q[2];\nx q[5];\n")
+        .unwrap_err()
+        .to_string();
     assert!(err.contains("out of range"), "{err}");
 }
 
 #[test]
 fn error_unknown_register() {
-    let err = qasm::parse("qreg q[2];\nx r[0];\n").unwrap_err();
+    let err = qasm::parse("qreg q[2];\nx r[0];\n")
+        .unwrap_err()
+        .to_string();
     assert!(err.contains("unknown register `r`"), "{err}");
 }
 
@@ -197,20 +209,22 @@ fn error_unknown_register() {
 // instead of returning an error.
 #[test]
 fn error_reversed_brackets_in_qreg() {
-    let err = qasm::parse("qreg q]3[;\n").unwrap_err();
+    let err = qasm::parse("qreg q]3[;\n").unwrap_err().to_string();
     assert!(err.contains("malformed register declaration"), "{err}");
 }
 
 #[test]
 fn error_reversed_brackets_in_operand() {
-    let err = qasm::parse("qreg q[2];\nx q]0[;\n").unwrap_err();
+    let err = qasm::parse("qreg q[2];\nx q]0[;\n")
+        .unwrap_err()
+        .to_string();
     assert!(err.contains("malformed qubit reference"), "{err}");
 }
 
 // Regression: a huge register used to abort the process on allocation.
 #[test]
 fn error_register_too_large() {
-    let err = qasm::parse("qreg q[40];\n").unwrap_err();
+    let err = qasm::parse("qreg q[40];\n").unwrap_err().to_string();
     assert!(err.contains("exceeds the maximum"), "{err}");
 }
 

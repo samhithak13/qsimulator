@@ -23,6 +23,7 @@
 //! reported as an unsupported-feature error rather than silently
 //! mis-simulated.
 
+use crate::error::ParseError;
 use crate::program::parse_angle;
 use crate::Circuit;
 use std::collections::HashMap;
@@ -33,8 +34,12 @@ use std::collections::HashMap;
 const MAX_QUBITS: usize = 30;
 
 /// Parse an OpenQASM 2.0 subset program into a [`Circuit`], or return a
-/// human-readable error naming the offending statement.
-pub fn parse(src: &str) -> Result<Circuit, String> {
+/// [`ParseError`] naming the offending statement.
+pub fn parse(src: &str) -> Result<Circuit, ParseError> {
+    parse_inner(src).map_err(ParseError::new)
+}
+
+fn parse_inner(src: &str) -> Result<Circuit, String> {
     let clean = strip_comments(src);
     let statements: Vec<&str> = clean
         .split(';')

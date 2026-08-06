@@ -81,7 +81,7 @@ fn parses_sdg_tdg_and_phase() {
 
 #[test]
 fn error_gate_before_qubits() {
-    let err = program::parse("h 0\n").unwrap_err();
+    let err = program::parse("h 0\n").unwrap_err().to_string();
     assert!(
         err.contains("first instruction must be `qubits N`"),
         "{err}"
@@ -90,7 +90,7 @@ fn error_gate_before_qubits() {
 
 #[test]
 fn error_qubit_out_of_range() {
-    let err = program::parse("qubits 2\nx 5\n").unwrap_err();
+    let err = program::parse("qubits 2\nx 5\n").unwrap_err().to_string();
     assert!(err.contains("out of range"), "{err}");
     assert!(err.contains("line 2"), "{err}");
 }
@@ -98,31 +98,37 @@ fn error_qubit_out_of_range() {
 // Regression: a huge register used to abort the process on allocation.
 #[test]
 fn error_too_many_qubits() {
-    let err = program::parse("qubits 40\n").unwrap_err();
+    let err = program::parse("qubits 40\n").unwrap_err().to_string();
     assert!(err.contains("exceeds the maximum"), "{err}");
 }
 
 #[test]
 fn error_unknown_instruction() {
-    let err = program::parse("qubits 2\nfoo 0\n").unwrap_err();
+    let err = program::parse("qubits 2\nfoo 0\n").unwrap_err().to_string();
     assert!(err.contains("unknown instruction"), "{err}");
 }
 
 #[test]
 fn error_bad_arity() {
-    let err = program::parse("qubits 2\ncnot 0\n").unwrap_err();
+    let err = program::parse("qubits 2\ncnot 0\n")
+        .unwrap_err()
+        .to_string();
     assert!(err.contains("expects 3 tokens"), "{err}");
 }
 
 #[test]
 fn error_control_equals_target() {
-    let err = program::parse("qubits 2\ncnot 1 1\n").unwrap_err();
+    let err = program::parse("qubits 2\ncnot 1 1\n")
+        .unwrap_err()
+        .to_string();
     assert!(err.contains("must differ"), "{err}");
 }
 
 #[test]
 fn error_empty_program() {
-    let err = program::parse("# just a comment\n\n").unwrap_err();
+    let err = program::parse("# just a comment\n\n")
+        .unwrap_err()
+        .to_string();
     assert!(err.contains("empty"), "{err}");
 }
 

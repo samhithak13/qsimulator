@@ -9,6 +9,51 @@ use std::fmt;
 
 type Gate = [[Complex64; 2]; 2];
 
+/// Reason a circuit could not be exported to the OpenQASM 2.0 subset by
+/// [`Circuit::to_qasm`]. These are the gates with no direct OpenQASM 2
+/// equivalent.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExportError {
+    /// An arbitrary single-qubit gate with no OpenQASM name. Built-in gates
+    /// never produce this; it can only arise from a manually built `Op`.
+    SingleGate {
+        /// The gate's diagram label.
+        label: &'static str,
+    },
+    /// An arbitrary controlled-U (from [`Circuit::cu`]).
+    ControlledU,
+    /// An arbitrary multi-controlled-U (from [`Circuit::mcu`]).
+    MultiControlledU,
+    /// A multi-controlled-X with a control count other than two; only the
+    /// two-control case (`ccx`) is representable.
+    MultiControlledX {
+        /// The number of controls that could not be expressed.
+        controls: usize,
+    },
+}
+
+impl fmt::Display for ExportError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ExportError::SingleGate { label } => {
+                write!(f, "cannot export single-qubit gate `{label}` to OpenQASM 2")
+            }
+            ExportError::ControlledU => {
+                f.write_str("cannot export an arbitrary controlled-U (cu) to OpenQASM 2")
+            }
+            ExportError::MultiControlledU => {
+                f.write_str("cannot export a multi-controlled-U (mcu) to OpenQASM 2")
+            }
+            ExportError::MultiControlledX { controls } => write!(
+                f,
+                "cannot export a multi-controlled-X with {controls} controls (only 2 = ccx)"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for ExportError {}
+
 /// A single instruction in a circuit.
 ///
 /// Each gate-bearing variant carries a short `label` (e.g. `"H"`, `"RX"`)
@@ -392,7 +437,7 @@ impl Circuit {
     /// assert!(qasm.starts_with("OPENQASM 2.0;"));
     /// assert!(qasm.contains("cx q[0],q[1];"));
     /// ```
-    pub fn to_qasm(&self) -> Result<String, String> {
+    pub fn to_qasm(&self) -> Result<String, ExportError> {
         let mut out = String::from("OPENQASM 2.0;\ninclude \"qelib1.inc\";\n");
         out.push_str(&format!("qreg q[{}];\n", self.n_qubits));
 
@@ -419,7 +464,7 @@ impl Circuit {
                         "RX" => "rx",
                         "RY" => "ry",
                         "RZ" => "rz",
-                        other => return Err(format!("cannot export single-qubit gate `{other}`")),
+                        other => return Err(ExportError::SingleGate { label: other }),
                     };
                     out.push_str(&format!("{name}{} q[{target}];\n", format_params(params)));
                 }
@@ -435,11 +480,7 @@ impl Circuit {
                         "Z" => "cz",
                         "CRZ" => "crz",
                         "CP" => "cu1",
-                        _ => {
-                            return Err(
-                                "cannot export an arbitrary controlled-U (cu) to OpenQASM".into()
-                            )
-                        }
+                        _ => return Err(ExportError::ControlledU),
                     };
                     out.push_str(&format!(
                         "{name}{} q[{control}],q[{target}];\n",
@@ -456,13 +497,12 @@ impl Circuit {
                     ..
                 } => {
                     if *label != "X" {
-                        return Err("cannot export a multi-controlled-U (mcu) to OpenQASM".into());
+                        return Err(ExportError::MultiControlledU);
                     }
                     if controls.len() != 2 {
-                        return Err(format!(
-                            "cannot export a multi-controlled-X with {} controls (only 2 = ccx)",
-                            controls.len()
-                        ));
+                        return Err(ExportError::MultiControlledX {
+                            controls: controls.len(),
+                        });
                     }
                     out.push_str(&format!(
                         "ccx q[{}],q[{}],q[{target}];\n",

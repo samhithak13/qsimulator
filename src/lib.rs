@@ -22,12 +22,14 @@
 #![warn(missing_docs)]
 
 pub mod circuit;
+pub mod error;
 pub mod gates;
 pub mod program;
 pub mod qasm;
 pub mod rng;
 pub mod state;
 
-pub use circuit::Circuit;
+pub use circuit::{Circuit, ExportError};
+pub use error::ParseError;
 pub use rng::Rng;
 pub use state::State;

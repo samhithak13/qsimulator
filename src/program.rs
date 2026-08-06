@@ -19,6 +19,7 @@
 //! `sample SHOTS SEED`. Angles are a plain float or a symbolic multiple of pi
 //! such as `pi`, `pi/2`, `-pi/4`, or `2pi`.
 
+use crate::error::ParseError;
 use crate::Circuit;
 use std::f64::consts::PI;
 
@@ -44,9 +45,9 @@ pub struct SampleSpec {
     pub seed: u64,
 }
 
-/// Parse a program from its textual form, or return a human-readable error
-/// message tagged with the offending line number.
-pub fn parse(src: &str) -> Result<Program, String> {
+/// Parse a program from its textual form, or return a [`ParseError`] tagged
+/// with the offending line number.
+pub fn parse(src: &str) -> Result<Program, ParseError> {
     let mut circuit: Option<Circuit> = None;
     let mut n = 0usize;
     let mut sample: Option<SampleSpec> = None;
@@ -59,7 +60,7 @@ pub fn parse(src: &str) -> Result<Program, String> {
         }
         let toks: Vec<&str> = line.split_whitespace().collect();
         let cmd = toks[0];
-        let at = |msg: String| format!("line {}: {}", lineno + 1, msg);
+        let at = |msg: String| ParseError::at_line(lineno + 1, msg);
 
         if cmd == "qubits" {
             if circuit.is_some() {
@@ -186,7 +187,8 @@ pub fn parse(src: &str) -> Result<Program, String> {
         }
     }
 
-    let circuit = circuit.ok_or_else(|| "program is empty (expected `qubits N`)".to_string())?;
+    let circuit =
+        circuit.ok_or_else(|| ParseError::new("program is empty (expected `qubits N`)"))?;
     Ok(Program { circuit, sample })
 }
 

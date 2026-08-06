@@ -5,7 +5,7 @@
 
 use approx::assert_relative_eq;
 use qsimulator::gates;
-use qsimulator::{qasm, Circuit, State};
+use qsimulator::{qasm, Circuit, ExportError, State};
 
 fn assert_same_probs(a: &State, b: &State) {
     assert_eq!(a.n_qubits(), b.n_qubits());
@@ -117,22 +117,22 @@ fn phase_gate_exports_as_u1() {
 fn error_exporting_arbitrary_controlled_u() {
     let mut c = Circuit::new(2);
     c.cu(gates::h(), 0, 1); // controlled-Hadamard: not in the QASM subset
-    let err = c.to_qasm().unwrap_err();
-    assert!(err.contains("controlled-U"), "{err}");
+    assert_eq!(c.to_qasm().unwrap_err(), ExportError::ControlledU);
 }
 
 #[test]
 fn error_exporting_multi_controlled_u() {
     let mut c = Circuit::new(3);
     c.mcu(gates::z(), &[0, 1], 2);
-    let err = c.to_qasm().unwrap_err();
-    assert!(err.contains("multi-controlled-U"), "{err}");
+    assert_eq!(c.to_qasm().unwrap_err(), ExportError::MultiControlledU);
 }
 
 #[test]
 fn error_exporting_three_control_mcx() {
     let mut c = Circuit::new(4);
     c.mcx(&[0, 1, 2], 3); // C3X has no direct OpenQASM 2 gate
-    let err = c.to_qasm().unwrap_err();
-    assert!(err.contains("3 controls"), "{err}");
+    assert_eq!(
+        c.to_qasm().unwrap_err(),
+        ExportError::MultiControlledX { controls: 3 }
+    );
 }

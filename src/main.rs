@@ -70,13 +70,14 @@ fn main() -> ExitCode {
 /// Read a program from `path` (or stdin when `path` is `-`) and parse it into a
 /// circuit, choosing the OpenQASM importer by `.qasm` extension or `OPENQASM`
 /// header, otherwise the native text program format.
-fn load_circuit(path: &str) -> Result<(Circuit, Option<SampleSpec>), String> {
+fn load_circuit(path: &str) -> Result<(Circuit, Option<SampleSpec>), Box<dyn std::error::Error>> {
     let src = read_source(path).map_err(|e| format!("cannot read {path}: {e}"))?;
     let is_qasm = path.ends_with(".qasm") || src.trim_start().starts_with("OPENQASM");
     if is_qasm {
-        qasm::parse(&src).map(|circuit| (circuit, None))
+        Ok((qasm::parse(&src)?, None))
     } else {
-        program::parse(&src).map(|prog| (prog.circuit, prog.sample))
+        let prog = program::parse(&src)?;
+        Ok((prog.circuit, prog.sample))
     }
 }
 
