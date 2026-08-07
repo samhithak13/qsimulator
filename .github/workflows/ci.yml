@@ -4,6 +4,13 @@ on:
   push:
     branches: [ main ]
   pull_request:
+  workflow_dispatch:
+
+# Cancel a superseded in-progress run for the same ref (e.g. rapid pushes), so
+# only the latest commit's run stays active.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
