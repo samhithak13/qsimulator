@@ -52,6 +52,7 @@ jobs:
         run: |
           cargo run --example ghz
           cargo run --example grover
+          cargo run --example qft
           cargo run --example teleportation
 
   lint:

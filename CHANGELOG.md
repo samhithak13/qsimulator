@@ -10,6 +10,7 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Controlled-U3 gate: `Circuit::cu3`, plus OpenQASM `cu3` import and export.
 - Controlled-Y (`cy`), controlled-Hadamard (`ch`), and Fredkin / controlled-SWAP
   (`cswap`) gates, with OpenQASM import and export.
+- A quantum Fourier transform example (`examples/qft.rs`).
 
 ### Changed
 - The `parallel` feature now also threads the controlled and multi-controlled
