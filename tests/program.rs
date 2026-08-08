@@ -145,3 +145,73 @@ fn bundled_ghz_example_parses() {
     let prog = program::parse(src).expect("bundled example should parse");
     assert_eq!(prog.circuit.run().n_qubits(), 3);
 }
+
+/// Every native instruction parses (exercises each builder arm).
+#[test]
+fn every_native_instruction_parses() {
+    let src = "\
+qubits 3
+h 0
+x 0
+y 1
+z 2
+s 0
+t 1
+sdg 2
+tdg 0
+rx pi/2 0
+ry -pi/4 1
+rz 0.3 2
+p pi 0
+u2 0.1 0.2 1
+u3 0.4 0.5 0.6 2
+cnot 0 1
+cy 1 2
+cz 0 2
+ch 0 1
+crz 0.7 1 2
+cp pi/2 0 1
+cu3 0.1 0.2 0.3 0 2
+swap 0 2
+toffoli 0 1 2
+cswap 0 1 2
+sample 100 42
+";
+    let prog = program::parse(src).expect("should parse");
+    assert!(prog.sample.is_some());
+    assert!((prog.circuit.run().norm() - 1.0).abs() < 1e-9);
+}
+
+#[test]
+fn native_error_paths() {
+    let cases = [
+        ("qubits 1\nqubits 2\n", "may only appear once"),
+        ("qubits 0\n", "must be >= 1"),
+        ("qubits 2\ncrz 0.5 1 1\n", "must differ"),
+        ("qubits 3\ncswap 0 1 1\n", "must be distinct"),
+        ("qubits 3\ntoffoli 0 1 1\n", "must differ"),
+        (
+            "qubits 2\nh 0\nsample 1 1\nsample 2 2\n",
+            "may only appear once",
+        ),
+    ];
+    for (src, needle) in cases {
+        let err = program::parse(src).unwrap_err().to_string();
+        assert!(err.contains(needle), "for `{src}`: {err}");
+    }
+}
+
+#[test]
+fn angle_forms_and_errors() {
+    // Negative pi form and a coefficient form both parse.
+    let p = program::parse("qubits 1\nrz -pi/2 0\nrz 2pi 0\n").expect("should parse");
+    assert!((p.circuit.run().norm() - 1.0).abs() < 1e-12);
+
+    for (src, needle) in [
+        ("qubits 1\nrx bogus 0\n", "invalid angle"),
+        ("qubits 1\nrx pi/0 0\n", "division by zero"),
+    ] {
+        let err = program::parse(src).unwrap_err().to_string();
+        assert!(err.contains(needle), "for `{src}`: {err}");
+    }
+}

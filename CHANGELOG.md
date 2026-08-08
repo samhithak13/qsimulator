@@ -13,6 +13,8 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A quantum Fourier transform example (`examples/qft.rs`).
 - Property tests (`tests/properties.rs`): random circuits preserve the norm,
   self-inverse gates cancel, and inverse rotations cancel.
+- CLI integration tests (`tests/cli.rs`) driving the built binary, and broader
+  parser coverage — raising line coverage to ~97%.
 
 ### Changed
 - The `parallel` feature now also threads the controlled and multi-controlled
