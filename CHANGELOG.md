@@ -6,6 +6,15 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- Controlled-U3 gate: `Circuit::cu3`, plus OpenQASM `cu3` import and export.
+
+### Changed
+- `Circuit::to_qasm` now exports an arbitrary controlled-U (`cu`) by
+  decomposing it into a control phase (`u1`) and a `cu3`, instead of returning
+  an error. `ExportError::ControlledU` is removed; only `mcu` and a
+  multi-controlled-X with a control count other than two still error.
+
 ## [0.1.0] - 2026-08-06
 
 Initial release.

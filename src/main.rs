@@ -187,6 +187,7 @@ PROGRAM FORMAT (one instruction per line; `#` starts a comment):
     u3 THETA PHI LAMBDA Q      General single-qubit gate U3
     cnot|cz C T                Two-qubit controlled gate (control C, target T)
     crz|cp THETA C T           Controlled-Rz / controlled-phase by THETA
+    cu3 THETA PHI LAMBDA C T   Controlled-U3
     swap A B                   Exchange qubits A and B
     toffoli C1 C2 T            CCNOT
     sample SHOTS SEED          Sample the final state (optional, once)

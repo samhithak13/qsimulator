@@ -20,8 +20,6 @@ pub enum ExportError {
         /// The gate's diagram label.
         label: &'static str,
     },
-    /// An arbitrary controlled-U (from [`Circuit::cu`]).
-    ControlledU,
     /// An arbitrary multi-controlled-U (from [`Circuit::mcu`]).
     MultiControlledU,
     /// A multi-controlled-X with a control count other than two; only the
@@ -37,9 +35,6 @@ impl fmt::Display for ExportError {
         match self {
             ExportError::SingleGate { label } => {
                 write!(f, "cannot export single-qubit gate `{label}` to OpenQASM 2")
-            }
-            ExportError::ControlledU => {
-                f.write_str("cannot export an arbitrary controlled-U (cu) to OpenQASM 2")
             }
             ExportError::MultiControlledU => {
                 f.write_str("cannot export a multi-controlled-U (mcu) to OpenQASM 2")
@@ -315,6 +310,26 @@ impl Circuit {
         self
     }
 
+    /// Controlled-U3: apply `u3(theta, phi, lambda)` to `target` when `control`
+    /// is |1> (the OpenQASM `cu3`).
+    pub fn cu3(
+        &mut self,
+        theta: f64,
+        phi: f64,
+        lambda: f64,
+        control: usize,
+        target: usize,
+    ) -> &mut Self {
+        self.ops.push(Op::Controlled {
+            gate: gates::u3(theta, phi, lambda),
+            control,
+            target,
+            label: "CU3",
+            params: vec![theta, phi, lambda],
+        });
+        self
+    }
+
     /// Controlled-Z: apply a phase of -1 to the |11> component of `control`
     /// and `target`. Symmetric in its two arguments.
     pub fn cz(&mut self, control: usize, target: usize) -> &mut Self {
@@ -419,13 +434,15 @@ impl Circuit {
     ///
     /// Emits the standard header, a single `qreg q[n]`, and one gate per line.
     /// The output round-trips through [`qasm::parse`](crate::qasm::parse):
-    /// re-importing it yields an equivalent circuit. Rotation angles are
-    /// written at full `f64` precision so the round trip is exact.
+    /// re-importing it yields an equivalent circuit. Angles are written at full
+    /// `f64` precision so the round trip is exact. An arbitrary controlled-U
+    /// ([`cu`](Circuit::cu)) is decomposed into a control phase (`u1`) and a
+    /// `cu3`.
     ///
-    /// Returns an error for gates the OpenQASM subset cannot express directly:
-    /// an arbitrary controlled-U ([`cu`](Circuit::cu)/[`mcu`](Circuit::mcu)),
-    /// or a multi-controlled-X with a control count other than two (only
-    /// [`toffoli`](Circuit::toffoli)/`ccx` is representable).
+    /// Returns an error only for gates the OpenQASM 2 subset cannot express: a
+    /// multi-controlled-U ([`mcu`](Circuit::mcu)), or a multi-controlled-X with
+    /// a control count other than two (only [`toffoli`](Circuit::toffoli)/`ccx`
+    /// is representable).
     ///
     /// # Example
     ///
@@ -469,23 +486,39 @@ impl Circuit {
                     out.push_str(&format!("{name}{} q[{target}];\n", format_params(params)));
                 }
                 Op::Controlled {
+                    gate,
                     control,
                     target,
                     label,
                     params,
-                    ..
                 } => {
-                    let name = match *label {
-                        "X" => "cx",
-                        "Z" => "cz",
-                        "CRZ" => "crz",
-                        "CP" => "cu1",
-                        _ => return Err(ExportError::ControlledU),
-                    };
-                    out.push_str(&format!(
-                        "{name}{} q[{control}],q[{target}];\n",
-                        format_params(params)
-                    ));
+                    match *label {
+                        "X" => out.push_str(&format!("cx q[{control}],q[{target}];\n")),
+                        "Z" => out.push_str(&format!("cz q[{control}],q[{target}];\n")),
+                        "CRZ" | "CP" | "CU3" => {
+                            let name = match *label {
+                                "CRZ" => "crz",
+                                "CP" => "cu1",
+                                _ => "cu3",
+                            };
+                            out.push_str(&format!(
+                                "{name}{} q[{control}],q[{target}];\n",
+                                format_params(params)
+                            ));
+                        }
+                        // Any other controlled single-qubit unitary (e.g. `cu`
+                        // with an arbitrary matrix): decompose into a phase on
+                        // the control followed by a controlled-U3.
+                        _ => {
+                            let (gamma, theta, phi, lambda) = gates::u3_decompose(gate);
+                            if gamma.abs() > 1e-12 {
+                                out.push_str(&format!("u1({gamma}) q[{control}];\n"));
+                            }
+                            out.push_str(&format!(
+                                "cu3({theta},{phi},{lambda}) q[{control}],q[{target}];\n"
+                            ));
+                        }
+                    }
                 }
                 Op::Swap { a, b } => {
                     out.push_str(&format!("swap q[{a}],q[{b}];\n"));

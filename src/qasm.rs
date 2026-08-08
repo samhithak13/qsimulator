@@ -14,12 +14,13 @@
 //! - Gates: `x y z h s t sdg tdg` (1 qubit), `rx ry rz(theta)`, the phase gate
 //!   `u1(lambda)` / `p(lambda)`, and the general `u2(phi,lambda)` /
 //!   `u3(theta,phi,lambda)` (1 qubit); `cx cz swap` (2 qubits); `ccx`
-//!   (3 qubits); the controlled rotations `crz(theta)` and controlled phase
-//!   `cu1(lambda)` / `cp(lambda)` (2 qubits). Angles use the same syntax as
-//!   the text program format (`pi`, `pi/2`, `-pi/4`, `2*pi`, or a float).
+//!   (3 qubits); the controlled rotations `crz(theta)`, controlled phase
+//!   `cu1(lambda)` / `cp(lambda)`, and controlled-U3 `cu3(theta,phi,lambda)`
+//!   (2 qubits). Angles use the same syntax as the text program format
+//!   (`pi`, `pi/2`, `-pi/4`, `2*pi`, or a float).
 //! - `//` line comments and `/* ... */` block comments.
 //!
-//! Anything else — custom `gate` definitions, `if`, `reset`, `cu3`, etc. — is
+//! Anything else — custom `gate` definitions, `if`, `reset`, etc. — is
 //! reported as an unsupported-feature error rather than silently
 //! mis-simulated.
 
@@ -251,6 +252,11 @@ fn apply_gate(
             want(2, 1)?;
             require_distinct(&q, stmt)?;
             circuit.cp(angles[0], q[0], q[1]);
+        }
+        "cu3" => {
+            want(2, 3)?;
+            require_distinct(&q, stmt)?;
+            circuit.cu3(angles[0], angles[1], angles[2], q[0], q[1]);
         }
         "swap" => {
             want(2, 0)?;

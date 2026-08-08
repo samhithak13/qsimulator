@@ -60,6 +60,13 @@ fn all_two_qubit_forms_parse() {
 }
 
 #[test]
+fn parses_cu3_as_controlled_x() {
+    // cu3(pi, 0, pi) is a controlled-X, so |01> -> |11>.
+    let prog = program::parse("qubits 2\nx 0\ncu3 pi 0 pi 0 1\n").expect("should parse");
+    assert_relative_eq!(prog.circuit.run().probability(0b11), 1.0, epsilon = 1e-12);
+}
+
+#[test]
 fn parses_u2_and_u3() {
     // u3(pi,0,pi) = X and u2(0,pi) = H.
     let prog = program::parse("qubits 2\nu3 pi 0 pi 0\nu2 0 pi 1\n").expect("should parse");

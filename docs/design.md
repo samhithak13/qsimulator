@@ -85,8 +85,8 @@ Implemented and covered by tests:
 - **Measurement** — `prob_qubit_one`, `measure_qubit`, `measure_all`, and
   `Circuit::sample`, backed by the seedable `rng::Rng`.
 - **Circuit** (`circuit::Circuit`) — builder methods for the full gate set,
-  including `cnot`, `cz`, `crz`, `cp`, `swap`, `toffoli`, and the general
-  `cu`/`mcx`/`mcu`; execution; ASCII diagrams; OpenQASM export.
+  including `cnot`, `cz`, `crz`, `cp`, `cu3`, `swap`, `toffoli`, and the
+  general `cu`/`mcx`/`mcu`; execution; ASCII diagrams; OpenQASM export.
 - **Front ends** — a text program parser (`program`), an OpenQASM 2.0
   importer (`qasm`), and a CLI (`main`).
 
@@ -143,9 +143,14 @@ builder in `circuit.rs` (and an `Op` arm if it needs new state machinery), the
 two front-end maps if it should be importable, and both a matrix/truth-table
 unit test and a circuit-level integration test.
 
+An arbitrary controlled-U (`cu`) has no direct OpenQASM 2 gate, so `to_qasm`
+decomposes it into a control phase (`u1`) plus `cu3` via a single-qubit Euler
+decomposition (`gates::u3_decompose`, which writes any 2×2 unitary as
+`e^{iγ}·u3(θ,φ,λ)`). The `cu3` convention is cross-validated against Qiskit.
+
 ## Roadmap
 
 - Extend the `parallel` feature to the controlled kernels (currently only
   `apply_1q` is threaded).
-- `cu3` import and export, to round-trip the arbitrary controlled-U gates that
-  currently have no OpenQASM 2 equivalent.
+- A multi-controlled-U export path (Barenco-style decomposition) so `mcu` and
+  wide `mcx` also round-trip.

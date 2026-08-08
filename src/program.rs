@@ -15,9 +15,9 @@
 //! Supported instructions: `qubits N`; single-qubit `h/x/y/z/s/t/sdg/tdg Q`;
 //! rotations `rx/ry/rz THETA Q`, phase `p THETA Q`, and the general
 //! `u2 PHI LAMBDA Q` / `u3 THETA PHI LAMBDA Q`; two-qubit `cnot/cz C T`,
-//! `crz/cp THETA C T`, and `swap A B`; `toffoli C1 C2 T`; and a terminal
-//! `sample SHOTS SEED`. Angles are a plain float or a symbolic multiple of pi
-//! such as `pi`, `pi/2`, `-pi/4`, or `2pi`.
+//! `crz/cp THETA C T`, `cu3 THETA PHI LAMBDA C T`, and `swap A B`;
+//! `toffoli C1 C2 T`; and a terminal `sample SHOTS SEED`. Angles are a plain
+//! float or a symbolic multiple of pi such as `pi`, `pi/2`, `-pi/4`, or `2pi`.
 
 use crate::error::ParseError;
 use crate::Circuit;
@@ -153,6 +153,18 @@ pub fn parse(src: &str) -> Result<Program, ParseError> {
                     "crz" => c.crz(theta, ctrl, tgt),
                     _ => c.cp(theta, ctrl, tgt),
                 };
+            }
+            "cu3" => {
+                expect_arity(&toks, 6).map_err(&at)?;
+                let theta = parse_angle(toks[1]).map_err(&at)?;
+                let phi = parse_angle(toks[2]).map_err(&at)?;
+                let lambda = parse_angle(toks[3]).map_err(&at)?;
+                let ctrl = parse_qubit(&toks, 4, n).map_err(&at)?;
+                let tgt = parse_qubit(&toks, 5, n).map_err(&at)?;
+                if ctrl == tgt {
+                    return Err(at("control and target must differ".into()));
+                }
+                c.cu3(theta, phi, lambda, ctrl, tgt);
             }
             "swap" => {
                 expect_arity(&toks, 3).map_err(&at)?;

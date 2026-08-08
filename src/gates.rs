@@ -93,6 +93,40 @@ pub fn u2(phi: f64, lambda: f64) -> Gate {
     u3(std::f64::consts::FRAC_PI_2, phi, lambda)
 }
 
+/// Decompose a 2x2 unitary `g` into a global phase and U3 angles such that
+/// `g == e^{i·γ}·u3(θ, φ, λ)`. Returns `(γ, θ, φ, λ)`.
+///
+/// Used by OpenQASM export to render an arbitrary controlled-U as a phase on
+/// the control (`u1(γ)`) followed by `cu3(θ, φ, λ)`, since the OpenQASM subset
+/// has no gate for a controlled arbitrary unitary directly.
+pub(crate) fn u3_decompose(g: &Gate) -> (f64, f64, f64, f64) {
+    const EPS: f64 = 1e-12;
+    // |g00| = cos(θ/2), |g10| = sin(θ/2).
+    let cos_half = g[0][0].norm();
+    let sin_half = g[1][0].norm();
+    let theta = 2.0 * sin_half.atan2(cos_half);
+
+    if cos_half < EPS {
+        // θ ≈ π: g00 ≈ 0, so γ is a gauge freedom — fix γ = 0.
+        // g10 = e^{i(γ+φ)}, g01 = -e^{i(γ+λ)}.
+        (0.0, theta, g[1][0].arg(), (-g[0][1]).arg())
+    } else if sin_half < EPS {
+        // θ ≈ 0: diagonal, φ is a gauge freedom — fix φ = 0.
+        // g00 = e^{iγ}, g11 = e^{i(γ+λ)}.
+        let gamma = g[0][0].arg();
+        (gamma, theta, 0.0, g[1][1].arg() - gamma)
+    } else {
+        // Generic: γ from g00, then φ from g10 and λ from -g01.
+        let gamma = g[0][0].arg();
+        (
+            gamma,
+            theta,
+            g[1][0].arg() - gamma,
+            (-g[0][1]).arg() - gamma,
+        )
+    }
+}
+
 /// Rotation about the X axis by angle `theta`:
 /// `[[cos(θ/2), -i·sin(θ/2)], [-i·sin(θ/2), cos(θ/2)]]`.
 ///
@@ -213,6 +247,43 @@ mod tests {
     #[test]
     fn u2_zero_pi_is_hadamard() {
         assert_gate_eq(&u2(0.0, PI), &h());
+    }
+
+    /// Reconstruct `e^{iγ}·u3(θ, φ, λ)`.
+    fn recompose(gamma: f64, theta: f64, phi: f64, lambda: f64) -> Gate {
+        let phase = c(gamma.cos(), gamma.sin());
+        let g = u3(theta, phi, lambda);
+        [
+            [phase * g[0][0], phase * g[0][1]],
+            [phase * g[1][0], phase * g[1][1]],
+        ]
+    }
+
+    #[test]
+    fn u3_decompose_reconstructs_every_gate() {
+        // Named gates, rotations, diagonal (θ=0) and anti-diagonal (θ=π) cases,
+        // and a few generic unitaries must all round-trip through the
+        // decomposition.
+        let cases = [
+            x(),
+            y(),
+            z(),
+            h(),
+            s(),
+            t(),
+            sdg(),
+            tdg(),
+            rz(0.7),
+            p(1.3),
+            u3(0.5, -0.6, 0.7),
+            u3(PI, 0.4, -0.9),                                        // θ = π
+            u3(0.0, 0.2, 1.1),                                        // θ = 0 (diagonal)
+            [[c(1.0, 0.0), c(0.0, 0.0)], [c(0.0, 0.0), c(1.0, 0.0)]], // identity
+        ];
+        for g in cases {
+            let (gamma, theta, phi, lambda) = u3_decompose(&g);
+            assert_gate_eq(&recompose(gamma, theta, phi, lambda), &g);
+        }
     }
 
     #[test]

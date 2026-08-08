@@ -59,12 +59,17 @@ def random_qasm(n_qubits: int, n_gates: int, rng: random.Random) -> str:
             lines.append(f"u3({angle(rng)},{angle(rng)},{angle(rng)}) q[{q}];")
         elif n_qubits >= 2 and kind < 0.94:
             a, b = rng.sample(range(n_qubits), 2)
-            if rng.random() < 0.5:
+            pick = rng.random()
+            if pick < 0.45:
                 g = rng.choice(TWO_QUBIT)
                 lines.append(f"{g} q[{a}],q[{b}];")
-            else:
+            elif pick < 0.8:
                 g = rng.choice(TWO_QUBIT_1ANGLE)
                 lines.append(f"{g}({angle(rng)}) q[{a}],q[{b}];")
+            else:
+                lines.append(
+                    f"cu3({angle(rng)},{angle(rng)},{angle(rng)}) q[{a}],q[{b}];"
+                )
         elif n_qubits >= 3:
             a, b, c = rng.sample(range(n_qubits), 3)
             lines.append(f"ccx q[{a}],q[{b}],q[{c}];")

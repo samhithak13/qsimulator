@@ -113,11 +113,33 @@ fn phase_gate_exports_as_u1() {
     assert_same_probs(&reimported.run(), &c.run());
 }
 
+/// An arbitrary controlled-U is decomposed into a control phase plus cu3, so
+/// it exports and round-trips (rather than erroring as it used to).
 #[test]
-fn error_exporting_arbitrary_controlled_u() {
+fn arbitrary_controlled_u_round_trips() {
+    // Controlled-Hadamard, plus superpositions on both qubits so the control
+    // and target phases are actually exercised.
     let mut c = Circuit::new(2);
-    c.cu(gates::h(), 0, 1); // controlled-Hadamard: not in the QASM subset
-    assert_eq!(c.to_qasm().unwrap_err(), ExportError::ControlledU);
+    c.h(0).h(1).cu(gates::h(), 0, 1);
+
+    let qasm = c.to_qasm().expect("cu should export via decomposition");
+    assert!(qasm.contains("cu3("), "{qasm}");
+
+    let reimported = qasm::parse(&qasm).expect("should re-import");
+    assert_same_probs(&reimported.run(), &c.run());
+}
+
+/// controlled-U3 exports as `cu3` and round-trips.
+#[test]
+fn cu3_exports_and_round_trips() {
+    let mut c = Circuit::new(2);
+    c.h(0).h(1).cu3(0.5, -0.6, 0.7, 0, 1);
+
+    let qasm = c.to_qasm().unwrap();
+    assert!(qasm.contains("cu3(0.5,-0.6,0.7) q[0],q[1];"), "{qasm}");
+
+    let reimported = qasm::parse(&qasm).unwrap();
+    assert_same_probs(&reimported.run(), &c.run());
 }
 
 #[test]

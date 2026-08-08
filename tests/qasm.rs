@@ -124,6 +124,13 @@ fn imports_controlled_rotations() {
     let c = qasm::parse("qreg q[2];\ncrz(0.7) q[0],q[1];\n").expect("should parse");
     let reimported = qasm::parse(&c.to_qasm().unwrap()).unwrap();
     assert_same_probs(&reimported.run(), &c.run());
+
+    // cu3(pi, 0, pi) is a controlled-X, so with the control set it flips the
+    // target: |01> -> |11>.
+    let cnot_like = qasm::parse("qreg q[2];\nx q[0];\ncu3(pi,0,pi) q[0],q[1];\n")
+        .expect("should parse")
+        .run();
+    assert_relative_eq!(cnot_like.probability(0b11), 1.0, epsilon = 1e-12);
 }
 
 #[test]

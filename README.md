@@ -47,7 +47,7 @@ cargo run --example teleportation  # measurement + classical feed-forward
   `16·2^n` bytes, which is the practical limit.
 - **Gates** — X, Y, Z, H, S, T and their daggers, the phase gate P(λ), the
   general single-qubit U2/U3, Rx/Ry/Rz, SWAP, CNOT, CZ, controlled rotations,
-  Toffoli, and arbitrary multi-controlled unitaries.
+  controlled-U3, Toffoli, and arbitrary (multi-)controlled unitaries.
 - **Measurement** — single-qubit and full-register collapse plus Born-rule
   sampling, driven by a seedable, dependency-free RNG so runs reproduce.
 - **Three front ends** — a Rust builder API, a line-based text format, and
@@ -149,15 +149,16 @@ cx q[0],q[1];
 
 Supported gates: `x y z h s t sdg tdg`, `rx/ry/rz(theta)`, `u1(lambda)`
 (alias `p`), `u2(phi,lambda)`, `u3(theta,phi,lambda)`, `cx`, `cz`,
-`crz(theta)`, `cu1(lambda)` (alias `cp`), `swap`, `ccx`. Multiple `qreg`s map
-into one flat qubit space in declaration order; `creg`, `barrier`, and
-`measure` are accepted and ignored; anything outside the subset is reported
-rather than silently mis-simulated.
+`crz(theta)`, `cu1(lambda)` (alias `cp`), `cu3(theta,phi,lambda)`, `swap`,
+`ccx`. Multiple `qreg`s map into one flat qubit space in declaration order;
+`creg`, `barrier`, and `measure` are accepted and ignored; anything outside
+the subset is reported rather than silently mis-simulated.
 
 `Circuit::to_qasm()` (and `qsimulator --emit-qasm <FILE>`) writes a circuit
 back out as OpenQASM 2.0. Circuits built from the supported gates round-trip
-exactly through the importer; gates with no OpenQASM 2 equivalent (an
-arbitrary controlled-U, a three-control X) return an export error.
+exactly through the importer; an arbitrary controlled-U is decomposed into a
+control phase plus `cu3`. Only a multi-controlled-U or a multi-controlled-X
+with a control count other than two returns an export error.
 
 ## Status
 
