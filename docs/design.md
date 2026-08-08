@@ -25,12 +25,17 @@ the amplitude vector as `chunks_exact_mut(2·2^target)` and splits each block
 into the target bit's `|0>`/`|1>` halves, so the inner loop is bounds-check
 free; the gate-matrix entries are hoisted into locals in every kernel.
 
-With the optional `parallel` feature, `apply_1q` runs across threads via
-rayon: it parallelizes over blocks for a low target qubit (coarse tiles, to
-keep tasks large) and within a block's two halves for a high one. The feature
-is off by default, so the default build keeps its single `num-complex`
-dependency and the `forbid(unsafe_code)` guarantee (rayon's safe parallel
-iterators need no unsafe here). See `benches/` for the harness and numbers.
+The controlled and multi-controlled kernels share one private `apply_masked`
+routine: the same target-bit walk with a per-pair test that the control bits
+are set (a single control being just a one-bit mask).
+
+With the optional `parallel` feature, `apply_1q` and `apply_masked` run across
+threads via rayon: they parallelize over blocks for a low target qubit (coarse
+tiles, to keep tasks large) and within a block's two halves for a high one.
+The feature is off by default, so the default build keeps its single
+`num-complex` dependency and the `forbid(unsafe_code)` guarantee (rayon's safe
+parallel iterators need no unsafe here). See `benches/` for the harness and
+numbers.
 
 The gate set covers the Paulis (X, Y, Z), Hadamard, the phase gates S and
 T (and their daggers), the phase gate `p(λ)`, the general single-qubit
@@ -150,7 +155,7 @@ decomposition (`gates::u3_decompose`, which writes any 2×2 unitary as
 
 ## Roadmap
 
-- Extend the `parallel` feature to the controlled kernels (currently only
-  `apply_1q` is threaded).
 - A multi-controlled-U export path (Barenco-style decomposition) so `mcu` and
   wide `mcx` also round-trip.
+- A SIMD or blocked-complex-arithmetic fast path, if the memory-bound ceiling
+  ever needs raising.

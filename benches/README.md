@@ -40,10 +40,10 @@ bit's `|0>`/`|1>` halves, and hoists the gate-matrix entries into locals in
 all three kernels. The largest gain is on a low target qubit, where the old
 kernel's small stride blocks had the most per-iteration overhead.
 
-## Parallel kernel
+## Parallel kernels
 
-Building with `--features parallel` runs `apply_1q` across threads (rayon).
-Same machine, `n = 22`:
+Building with `--features parallel` runs the single-qubit and (multi-)
+controlled kernels across threads (rayon). Same machine, `n = 22`:
 
 ```bash
 cargo bench --features parallel
@@ -53,8 +53,11 @@ cargo bench --features parallel
 |--------------------------|-------:|---------:|
 | `apply_1q`, target = 0   |  ~500  |   ~760   |
 | `apply_1q`, target = n-1 |  ~510  |  ~1200   |
+| `apply_controlled_1q`    |  ~820  |  ~1000   |
 
-The kernel parallelizes over blocks for a low target qubit and within a block
+Each kernel parallelizes over blocks for a low target qubit and within a block
 for a high one. The speedup is sublinear in the eight cores because a
-state-vector sweep is memory-bandwidth bound; the high target case, which
-splits into two large contiguous halves, scales best (~2.4x).
+state-vector sweep is memory-bandwidth bound; the high-target single-qubit
+case, which splits into two large contiguous halves, scales best (~2.4x). The
+controlled kernel gains less (~1.2x): it is branchy and touches only the pairs
+whose control bits are set.

@@ -108,20 +108,8 @@ impl State {
         assert!(control < self.n_qubits, "control qubit out of range");
         assert!(target < self.n_qubits, "target qubit out of range");
         assert_ne!(control, target, "control and target must differ");
-        let (g00, g01) = (gate[0][0], gate[0][1]);
-        let (g10, g11) = (gate[1][0], gate[1][1]);
-        let cmask = 1usize << control;
-        let tstep = 1usize << target;
-        for j in 0..self.amps.len() {
-            // Act on the pair (j, j+tstep) where the target bit of j is 0
-            // and the control bit is 1.
-            if (j & tstep) == 0 && (j & cmask) != 0 {
-                let a = self.amps[j];
-                let b = self.amps[j + tstep];
-                self.amps[j] = g00 * a + g01 * b;
-                self.amps[j + tstep] = g10 * a + g11 * b;
-            }
-        }
+        // With a single control bit, `(j & cmask) != 0` and `== cmask` agree.
+        self.apply_masked(gate, 1usize << control, target);
     }
 
     /// Apply a single-qubit `gate` to `target`, but only on basis states
@@ -138,22 +126,74 @@ impl State {
         target: usize,
     ) {
         assert!(target < self.n_qubits, "target qubit out of range");
-        let (g00, g01) = (gate[0][0], gate[0][1]);
-        let (g10, g11) = (gate[1][0], gate[1][1]);
         let mut cmask = 0usize;
         for &ctrl in controls {
             assert!(ctrl < self.n_qubits, "control qubit out of range");
             assert_ne!(ctrl, target, "control and target must differ");
             cmask |= 1usize << ctrl;
         }
-        let tstep = 1usize << target;
-        for j in 0..self.amps.len() {
-            // Act once per pair (target bit 0) and only when all controls set.
-            if (j & tstep) == 0 && (j & cmask) == cmask {
-                let a = self.amps[j];
-                let b = self.amps[j + tstep];
-                self.amps[j] = g00 * a + g01 * b;
-                self.amps[j + tstep] = g10 * a + g11 * b;
+        self.apply_masked(gate, cmask, target);
+    }
+
+    /// Apply `gate`'s butterfly to the `target` bit's `|0>`/`|1>` pairs, but
+    /// only for basis states where every bit in `cmask` is set. Shared by the
+    /// controlled and multi-controlled kernels (a single control is just a
+    /// one-bit `cmask`).
+    ///
+    /// Structurally identical to [`apply_1q`](Self::apply_1q) — a walk over the
+    /// target bit's halves — with a per-pair `cmask` test on the absolute
+    /// index. With the `parallel` feature it threads the same way.
+    fn apply_masked(&mut self, gate: &[[Complex64; 2]; 2], cmask: usize, target: usize) {
+        let (g00, g01) = (gate[0][0], gate[0][1]);
+        let (g10, g11) = (gate[1][0], gate[1][1]);
+        // `base` is the absolute index of `low[0]` in its block; the pair for
+        // `low[k]` sits at index `base + k`, whose control bits we test.
+        let butterfly = move |base: usize, k: usize, a: &mut Complex64, b: &mut Complex64| {
+            if ((base + k) & cmask) == cmask {
+                let (x, y) = (*a, *b);
+                *a = g00 * x + g01 * y;
+                *b = g10 * x + g11 * y;
+            }
+        };
+        let step = 1usize << target;
+        let block = step << 1;
+
+        #[cfg(feature = "parallel")]
+        {
+            const TILE: usize = 1 << 14;
+            if block <= TILE {
+                self.amps
+                    .par_chunks_mut(TILE)
+                    .enumerate()
+                    .for_each(|(t, region)| {
+                        let region_base = t * TILE;
+                        for (bi, blk) in region.chunks_exact_mut(block).enumerate() {
+                            let base = region_base + bi * block;
+                            let (low, high) = blk.split_at_mut(step);
+                            for (k, (a, b)) in low.iter_mut().zip(high.iter_mut()).enumerate() {
+                                butterfly(base, k, a, b);
+                            }
+                        }
+                    });
+            } else {
+                for (bi, blk) in self.amps.chunks_exact_mut(block).enumerate() {
+                    let base = bi * block;
+                    let (low, high) = blk.split_at_mut(step);
+                    low.par_iter_mut()
+                        .zip(high.par_iter_mut())
+                        .enumerate()
+                        .for_each(|(k, (a, b))| butterfly(base, k, a, b));
+                }
+            }
+        }
+        #[cfg(not(feature = "parallel"))]
+        {
+            for (bi, blk) in self.amps.chunks_exact_mut(block).enumerate() {
+                let base = bi * block;
+                let (low, high) = blk.split_at_mut(step);
+                for (k, (a, b)) in low.iter_mut().zip(high.iter_mut()).enumerate() {
+                    butterfly(base, k, a, b);
+                }
             }
         }
     }

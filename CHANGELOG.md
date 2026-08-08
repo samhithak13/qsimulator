@@ -10,6 +10,8 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Controlled-U3 gate: `Circuit::cu3`, plus OpenQASM `cu3` import and export.
 
 ### Changed
+- The `parallel` feature now also threads the controlled and multi-controlled
+  kernels (~1.2x on an Apple M1), via a shared `apply_masked` routine.
 - `Circuit::to_qasm` now exports an arbitrary controlled-U (`cu`) by
   decomposing it into a control phase (`u1`) and a `cu3`, instead of returning
   an error. `ExportError::ControlledU` is removed; only `mcu` and a
