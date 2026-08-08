@@ -30,8 +30,9 @@ import numpy as np
 # Gates shared by qsimulator and Qiskit's qelib1, grouped by (qubits, angles).
 ONE_QUBIT = ["h", "x", "y", "z", "s", "t", "sdg", "tdg"]
 ONE_QUBIT_1ANGLE = ["rx", "ry", "rz", "u1"]
-TWO_QUBIT = ["cx", "cz", "swap"]
+TWO_QUBIT = ["cx", "cy", "cz", "ch", "swap"]
 TWO_QUBIT_1ANGLE = ["crz", "cu1"]
+THREE_QUBIT = ["ccx", "cswap"]
 
 
 def angle(rng: random.Random) -> str:
@@ -72,7 +73,8 @@ def random_qasm(n_qubits: int, n_gates: int, rng: random.Random) -> str:
                 )
         elif n_qubits >= 3:
             a, b, c = rng.sample(range(n_qubits), 3)
-            lines.append(f"ccx q[{a}],q[{b}],q[{c}];")
+            g = rng.choice(THREE_QUBIT)
+            lines.append(f"{g} q[{a}],q[{b}],q[{c}];")
         else:
             q = rng.randrange(n_qubits)
             lines.append(f"x q[{q}];")

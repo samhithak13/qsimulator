@@ -14,10 +14,11 @@
 //!
 //! Supported instructions: `qubits N`; single-qubit `h/x/y/z/s/t/sdg/tdg Q`;
 //! rotations `rx/ry/rz THETA Q`, phase `p THETA Q`, and the general
-//! `u2 PHI LAMBDA Q` / `u3 THETA PHI LAMBDA Q`; two-qubit `cnot/cz C T`,
-//! `crz/cp THETA C T`, `cu3 THETA PHI LAMBDA C T`, and `swap A B`;
-//! `toffoli C1 C2 T`; and a terminal `sample SHOTS SEED`. Angles are a plain
-//! float or a symbolic multiple of pi such as `pi`, `pi/2`, `-pi/4`, or `2pi`.
+//! `u2 PHI LAMBDA Q` / `u3 THETA PHI LAMBDA Q`; two-qubit `cnot/cy/cz/ch C T`,
+//! `crz/cp THETA C T`, `cu3 THETA PHI LAMBDA C T`, and `swap A B`; three-qubit
+//! `toffoli C1 C2 T` and `cswap C A B`; and a terminal `sample SHOTS SEED`.
+//! Angles are a plain float or a symbolic multiple of pi such as `pi`, `pi/2`,
+//! `-pi/4`, or `2pi`.
 
 use crate::error::ParseError;
 use crate::Circuit;
@@ -129,7 +130,7 @@ pub fn parse(src: &str) -> Result<Program, ParseError> {
                 let q = parse_qubit(&toks, 4, n).map_err(&at)?;
                 c.u3(theta, phi, lambda, q);
             }
-            "cnot" | "cz" => {
+            "cnot" | "cz" | "cy" | "ch" => {
                 expect_arity(&toks, 3).map_err(&at)?;
                 let ctrl = parse_qubit(&toks, 1, n).map_err(&at)?;
                 let tgt = parse_qubit(&toks, 2, n).map_err(&at)?;
@@ -138,8 +139,20 @@ pub fn parse(src: &str) -> Result<Program, ParseError> {
                 }
                 match cmd {
                     "cnot" => c.cnot(ctrl, tgt),
+                    "cy" => c.cy(ctrl, tgt),
+                    "ch" => c.ch(ctrl, tgt),
                     _ => c.cz(ctrl, tgt),
                 };
+            }
+            "cswap" => {
+                expect_arity(&toks, 4).map_err(&at)?;
+                let ctrl = parse_qubit(&toks, 1, n).map_err(&at)?;
+                let a = parse_qubit(&toks, 2, n).map_err(&at)?;
+                let b = parse_qubit(&toks, 3, n).map_err(&at)?;
+                if ctrl == a || ctrl == b || a == b {
+                    return Err(at("cswap qubits must be distinct".into()));
+                }
+                c.cswap(ctrl, a, b);
             }
             "crz" | "cp" => {
                 expect_arity(&toks, 4).map_err(&at)?;

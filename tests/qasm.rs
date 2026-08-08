@@ -134,6 +134,35 @@ fn imports_controlled_rotations() {
 }
 
 #[test]
+fn imports_cy_ch_cswap() {
+    // cy: control set, Y|0> = i|1>, so amplitude of |11> is i.
+    let cy = qasm::parse("qreg q[2];\nx q[0];\ncy q[0],q[1];\n")
+        .expect("should parse")
+        .run();
+    assert_relative_eq!(cy.probability(0b11), 1.0, epsilon = 1e-12);
+    assert_relative_eq!(cy.amplitudes()[0b11].im, 1.0, epsilon = 1e-12);
+
+    // ch: control set, H|0> spreads the target evenly.
+    let ch = qasm::parse("qreg q[2];\nx q[0];\nch q[0],q[1];\n")
+        .expect("should parse")
+        .run();
+    assert_relative_eq!(ch.probability(0b01), 0.5, epsilon = 1e-12);
+    assert_relative_eq!(ch.probability(0b11), 0.5, epsilon = 1e-12);
+
+    // cswap: control set swaps the other two (|011> -> |101>); control clear
+    // leaves them (|010> stays).
+    let swapped = qasm::parse("qreg q[3];\nx q[0];\nx q[1];\ncswap q[0],q[1],q[2];\n")
+        .expect("should parse")
+        .run();
+    assert_relative_eq!(swapped.probability(0b101), 1.0, epsilon = 1e-12);
+
+    let unswapped = qasm::parse("qreg q[3];\nx q[1];\ncswap q[0],q[1],q[2];\n")
+        .expect("should parse")
+        .run();
+    assert_relative_eq!(unswapped.probability(0b010), 1.0, epsilon = 1e-12);
+}
+
+#[test]
 fn imports_cz_and_swap() {
     let src = "qreg q[2];\nx q[0];\nswap q[0],q[1];\ncz q[0],q[1];\n";
     let imported = qasm::parse(src).expect("should parse").run();

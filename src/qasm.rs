@@ -14,10 +14,11 @@
 //! - Gates: `x y z h s t sdg tdg` (1 qubit), `rx ry rz(theta)`, the phase gate
 //!   `u1(lambda)` / `p(lambda)`, and the general `u2(phi,lambda)` /
 //!   `u3(theta,phi,lambda)` (1 qubit); `cx cz swap` (2 qubits); `ccx`
-//!   (3 qubits); the controlled rotations `crz(theta)`, controlled phase
-//!   `cu1(lambda)` / `cp(lambda)`, and controlled-U3 `cu3(theta,phi,lambda)`
-//!   (2 qubits). Angles use the same syntax as the text program format
-//!   (`pi`, `pi/2`, `-pi/4`, `2*pi`, or a float).
+//!   (3 qubits); `cy cz ch` (2 qubits); `cswap` (3 qubits); the controlled
+//!   rotations `crz(theta)`, controlled phase `cu1(lambda)` / `cp(lambda)`, and
+//!   controlled-U3 `cu3(theta,phi,lambda)` (2 qubits). Angles use the same
+//!   syntax as the text program format (`pi`, `pi/2`, `-pi/4`, `2*pi`, or a
+//!   float).
 //! - `//` line comments and `/* ... */` block comments.
 //!
 //! Anything else — custom `gate` definitions, `if`, `reset`, etc. — is
@@ -236,10 +237,20 @@ fn apply_gate(
             require_distinct(&q, stmt)?;
             circuit.cnot(q[0], q[1]);
         }
+        "cy" => {
+            want(2, 0)?;
+            require_distinct(&q, stmt)?;
+            circuit.cy(q[0], q[1]);
+        }
         "cz" => {
             want(2, 0)?;
             require_distinct(&q, stmt)?;
             circuit.cz(q[0], q[1]);
+        }
+        "ch" => {
+            want(2, 0)?;
+            require_distinct(&q, stmt)?;
+            circuit.ch(q[0], q[1]);
         }
         "crz" => {
             want(2, 1)?;
@@ -262,6 +273,11 @@ fn apply_gate(
             want(2, 0)?;
             require_distinct(&q, stmt)?;
             circuit.swap(q[0], q[1]);
+        }
+        "cswap" => {
+            want(3, 0)?;
+            require_distinct(&q, stmt)?;
+            circuit.cswap(q[0], q[1], q[2]);
         }
         "ccx" => {
             want(3, 0)?;

@@ -343,9 +343,44 @@ impl Circuit {
         self
     }
 
+    /// Controlled-Y: apply Y to `target` when `control` is |1> (OpenQASM `cy`).
+    pub fn cy(&mut self, control: usize, target: usize) -> &mut Self {
+        self.ops.push(Op::Controlled {
+            gate: gates::y(),
+            control,
+            target,
+            label: "Y",
+            params: Vec::new(),
+        });
+        self
+    }
+
+    /// Controlled-Hadamard: apply H to `target` when `control` is |1>
+    /// (OpenQASM `ch`).
+    pub fn ch(&mut self, control: usize, target: usize) -> &mut Self {
+        self.ops.push(Op::Controlled {
+            gate: gates::h(),
+            control,
+            target,
+            label: "H",
+            params: Vec::new(),
+        });
+        self
+    }
+
     /// SWAP: exchange the states of qubits `a` and `b`.
     pub fn swap(&mut self, a: usize, b: usize) -> &mut Self {
         self.ops.push(Op::Swap { a, b });
+        self
+    }
+
+    /// Controlled-SWAP (Fredkin): exchange qubits `a` and `b` when `control`
+    /// is |1> (OpenQASM `cswap`). Implemented via the standard identity
+    /// `CSWAP(c,a,b) = CNOT(b,a)·CCX(c,a,b)·CNOT(b,a)`.
+    pub fn cswap(&mut self, control: usize, a: usize, b: usize) -> &mut Self {
+        self.cnot(b, a);
+        self.toffoli(control, a, b);
+        self.cnot(b, a);
         self
     }
 
@@ -494,7 +529,9 @@ impl Circuit {
                 } => {
                     match *label {
                         "X" => out.push_str(&format!("cx q[{control}],q[{target}];\n")),
+                        "Y" => out.push_str(&format!("cy q[{control}],q[{target}];\n")),
                         "Z" => out.push_str(&format!("cz q[{control}],q[{target}];\n")),
+                        "H" => out.push_str(&format!("ch q[{control}],q[{target}];\n")),
                         "CRZ" | "CP" | "CU3" => {
                             let name = match *label {
                                 "CRZ" => "crz",

@@ -129,6 +129,21 @@ fn arbitrary_controlled_u_round_trips() {
     assert_same_probs(&reimported.run(), &c.run());
 }
 
+/// cy and ch export as their named OpenQASM gates and round-trip; cswap
+/// round-trips through its CNOT/Toffoli decomposition.
+#[test]
+fn cy_ch_cswap_export() {
+    let mut c = Circuit::new(3);
+    c.h(0).h(1).h(2).cy(0, 1).ch(1, 2).cswap(0, 1, 2);
+
+    let qasm = c.to_qasm().unwrap();
+    assert!(qasm.contains("cy q[0],q[1];"), "{qasm}");
+    assert!(qasm.contains("ch q[1],q[2];"), "{qasm}");
+
+    let reimported = qasm::parse(&qasm).expect("should re-import");
+    assert_same_probs(&reimported.run(), &c.run());
+}
+
 /// controlled-U3 exports as `cu3` and round-trips.
 #[test]
 fn cu3_exports_and_round_trips() {

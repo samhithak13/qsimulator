@@ -46,8 +46,9 @@ cargo run --example teleportation  # measurement + classical feed-forward
 - **State-vector simulation** up to ~25 qubits on a laptop; amplitudes take
   `16·2^n` bytes, which is the practical limit.
 - **Gates** — X, Y, Z, H, S, T and their daggers, the phase gate P(λ), the
-  general single-qubit U2/U3, Rx/Ry/Rz, SWAP, CNOT, CZ, controlled rotations,
-  controlled-U3, Toffoli, and arbitrary (multi-)controlled unitaries.
+  general single-qubit U2/U3, Rx/Ry/Rz, SWAP, CNOT, CY, CZ, CH, controlled
+  rotations, controlled-U3, Toffoli, Fredkin (CSWAP), and arbitrary
+  (multi-)controlled unitaries.
 - **Measurement** — single-qubit and full-register collapse plus Born-rule
   sampling, driven by a seedable, dependency-free RNG so runs reproduce.
 - **Three front ends** — a Rust builder API, a line-based text format, and
@@ -148,9 +149,9 @@ cx q[0],q[1];
 ```
 
 Supported gates: `x y z h s t sdg tdg`, `rx/ry/rz(theta)`, `u1(lambda)`
-(alias `p`), `u2(phi,lambda)`, `u3(theta,phi,lambda)`, `cx`, `cz`,
+(alias `p`), `u2(phi,lambda)`, `u3(theta,phi,lambda)`, `cx`, `cy`, `cz`, `ch`,
 `crz(theta)`, `cu1(lambda)` (alias `cp`), `cu3(theta,phi,lambda)`, `swap`,
-`ccx`. Multiple `qreg`s map into one flat qubit space in declaration order;
+`ccx`, `cswap`. Multiple `qreg`s map into one flat qubit space in declaration order;
 `creg`, `barrier`, and `measure` are accepted and ignored; anything outside
 the subset is reported rather than silently mis-simulated.
 
