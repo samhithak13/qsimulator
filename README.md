@@ -81,11 +81,12 @@ The parsers are fuzzed with [`cargo fuzz`](fuzz) (targets under `fuzz/`), with
 a stable-toolchain random-input smoke test in `tests/robustness.rs` for
 continuous coverage.
 
-`cargo test` runs 100+ unit and integration tests. CI runs the full suite on
-Linux and macOS, enforces `cargo fmt --check`, `cargo clippy -D warnings`, and
-a warning-clean `cargo doc`, executes the examples, runs the Qiskit
-cross-validation, fuzzes the parsers, and audits dependencies with
-`cargo audit`.
+`cargo test` runs 120+ unit and integration tests (including a CLI driven
+end-to-end). CI runs the full suite on Linux and macOS, enforces
+`cargo fmt --check`, `cargo clippy -D warnings`, and a warning-clean
+`cargo doc`, executes the examples, runs the Qiskit cross-validation, fuzzes
+the parsers, audits dependencies with `cargo audit`, and gates line coverage
+(~97%) at 90% via `cargo llvm-cov`.
 
 ## Benchmarks
 

@@ -129,6 +129,27 @@ jobs:
       - name: Audit dependencies
         run: cargo audit
 
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    # cargo-llvm-cov adds its own instrumentation flags; don't mix in -D warnings.
+    env:
+      RUSTFLAGS: ""
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+
+      - name: Measure coverage (fail under 90% lines)
+        run: cargo llvm-cov --summary-only --fail-under-lines 90
+
   fuzz:
     name: Fuzz parsers
     runs-on: ubuntu-latest
