@@ -116,6 +116,18 @@ impl Circuit {
         self
     }
 
+    /// Identity gate on `target`: a no-op, kept so a circuit can record an
+    /// explicit idle step (OpenQASM's `id`).
+    pub fn id(&mut self, target: usize) -> &mut Self {
+        self.ops.push(Op::Single {
+            gate: gates::id(),
+            target,
+            label: "I",
+            params: Vec::new(),
+        });
+        self
+    }
+
     /// Pauli-Y gate on `target`.
     pub fn y(&mut self, target: usize) -> &mut Self {
         self.ops.push(Op::Single {
@@ -490,6 +502,7 @@ impl Circuit {
                     ..
                 } => {
                     let name = match *label {
+                        "I" => "id",
                         "H" => "h",
                         "X" => "x",
                         "Y" => "y",

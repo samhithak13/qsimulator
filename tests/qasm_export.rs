@@ -19,7 +19,8 @@ fn assert_same_probs(a: &State, b: &State) {
 #[test]
 fn round_trips_a_mixed_circuit() {
     let mut c = Circuit::new(3);
-    c.h(0)
+    c.id(0)
+        .h(0)
         .x(1)
         .y(2)
         .z(0)

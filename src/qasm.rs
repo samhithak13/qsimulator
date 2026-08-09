@@ -11,7 +11,7 @@
 //!   indices).
 //! - `creg name[N];`, `barrier ...;`, and `measure ... -> ...;` are accepted
 //!   and ignored (sampling is done separately via [`Circuit::sample`]).
-//! - Gates: `x y z h s t sdg tdg` (1 qubit), `rx ry rz(theta)`, the phase gate
+//! - Gates: `id x y z h s t sdg tdg` (1 qubit), `rx ry rz(theta)`, the phase gate
 //!   `u1(lambda)` / `p(lambda)`, and the general `u2(phi,lambda)` /
 //!   `u3(theta,phi,lambda)` (1 qubit); `cx cz swap` (2 qubits); `ccx`
 //!   (3 qubits); `cy cz ch` (2 qubits); `cswap` (3 qubits); the controlled
@@ -175,6 +175,10 @@ fn apply_gate(
     };
 
     match name {
+        "id" => {
+            want(1, 0)?;
+            circuit.id(q[0]);
+        }
         "x" => {
             want(1, 0)?;
             circuit.x(q[0]);

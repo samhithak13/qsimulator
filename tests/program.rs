@@ -151,6 +151,7 @@ fn bundled_ghz_example_parses() {
 fn every_native_instruction_parses() {
     let src = "\
 qubits 3
+id 0
 h 0
 x 0
 y 1

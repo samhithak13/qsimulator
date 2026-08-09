@@ -132,7 +132,7 @@ cnot 1 2        # GHZ state
 sample 1000 42
 ```
 
-Instructions: `qubits N`; `h|x|y|z|s|t|sdg|tdg Q`; `rx|ry|rz|p THETA Q`
+Instructions: `qubits N`; `id|h|x|y|z|s|t|sdg|tdg Q`; `rx|ry|rz|p THETA Q`
 (THETA is a float or a symbolic multiple of pi like `pi/2`, `-pi/4`, `2pi`);
 `u2 PHI LAMBDA Q`; `u3 THETA PHI LAMBDA Q`; `cnot|cy|cz|ch C T`;
 `crz|cp THETA C T`; `cu3 THETA PHI LAMBDA C T`; `swap A B`; `cswap C A B`;
@@ -152,7 +152,7 @@ h q[0];
 cx q[0],q[1];
 ```
 
-Supported gates: `x y z h s t sdg tdg`, `rx/ry/rz(theta)`, `u1(lambda)`
+Supported gates: `id x y z h s t sdg tdg`, `rx/ry/rz(theta)`, `u1(lambda)`
 (alias `p`), `u2(phi,lambda)`, `u3(theta,phi,lambda)`, `cx`, `cy`, `cz`, `ch`,
 `crz(theta)`, `cu1(lambda)` (alias `cp`), `cu3(theta,phi,lambda)`, `swap`,
 `ccx`, `cswap`. Multiple `qreg`s map into one flat qubit space in declaration order;

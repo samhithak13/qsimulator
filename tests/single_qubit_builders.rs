@@ -5,6 +5,23 @@ use qsimulator::Circuit;
 use std::f64::consts::{FRAC_PI_4, PI};
 
 /// Y|0> = i|1>.
+/// `id` is a no-op: it leaves an arbitrary state exactly as it found it, and
+/// still occupies a column in the diagram.
+#[test]
+fn id_leaves_the_state_untouched() {
+    let mut plain = Circuit::new(2);
+    plain.h(0).u3(0.7, -0.4, 1.1, 1);
+    let mut with_id = Circuit::new(2);
+    with_id.id(0).h(0).id(1).u3(0.7, -0.4, 1.1, 1).id(0);
+
+    let (a, b) = (plain.run(), with_id.run());
+    for i in 0..a.amplitudes().len() {
+        assert_relative_eq!(a.amplitudes()[i].re, b.amplitudes()[i].re, epsilon = 1e-15);
+        assert_relative_eq!(a.amplitudes()[i].im, b.amplitudes()[i].im, epsilon = 1e-15);
+    }
+    assert!(with_id.diagram().contains('I'), "{}", with_id.diagram());
+}
+
 #[test]
 fn y_flips_and_phases() {
     let mut circuit = Circuit::new(1);

@@ -17,6 +17,8 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   parser coverage — raising line coverage to ~97%.
 - A CI coverage job (`cargo llvm-cov`) that fails if line coverage drops below
   90%.
+- An `id` (identity) gate: `Circuit::id`, `gates::id`, the `id Q` program
+  instruction, and OpenQASM `id` import and export.
 - Text program instructions `mcx C... T` and `mcu3 THETA PHI LAMBDA C... T`,
   which take any number of controls, so multi-controlled gates are reachable
   from the CLI.

@@ -9,6 +9,13 @@ fn c(re: f64, im: f64) -> Complex64 {
     Complex64::new(re, im)
 }
 
+/// Identity gate. A no-op on the state, kept so that circuits can carry an
+/// explicit "do nothing here" step -- OpenQASM's `id`, used as a scheduling
+/// placeholder and as an idle marker in noise models.
+pub fn id() -> Gate {
+    [[c(1.0, 0.0), c(0.0, 0.0)], [c(0.0, 0.0), c(1.0, 0.0)]]
+}
+
 /// Pauli-X (NOT) gate.
 pub fn x() -> Gate {
     [[c(0.0, 0.0), c(1.0, 0.0)], [c(1.0, 0.0), c(0.0, 0.0)]]

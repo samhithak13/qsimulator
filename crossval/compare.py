@@ -35,7 +35,7 @@ import sys
 import numpy as np
 
 # Gates shared by qsimulator and Qiskit's qelib1, grouped by (qubits, angles).
-ONE_QUBIT = ["h", "x", "y", "z", "s", "t", "sdg", "tdg"]
+ONE_QUBIT = ["id", "h", "x", "y", "z", "s", "t", "sdg", "tdg"]
 ONE_QUBIT_1ANGLE = ["rx", "ry", "rz", "u1"]
 TWO_QUBIT = ["cx", "cy", "cz", "ch", "swap"]
 TWO_QUBIT_1ANGLE = ["crz", "cu1"]

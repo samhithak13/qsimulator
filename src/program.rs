@@ -12,7 +12,7 @@
 //! sample 1000 42
 //! ```
 //!
-//! Supported instructions: `qubits N`; single-qubit `h/x/y/z/s/t/sdg/tdg Q`;
+//! Supported instructions: `qubits N`; single-qubit `id/h/x/y/z/s/t/sdg/tdg Q`;
 //! rotations `rx/ry/rz THETA Q`, phase `p THETA Q`, and the general
 //! `u2 PHI LAMBDA Q` / `u3 THETA PHI LAMBDA Q`; two-qubit `cnot/cy/cz/ch C T`,
 //! `crz/cp THETA C T`, `cu3 THETA PHI LAMBDA C T`, and `swap A B`; three-qubit
@@ -89,10 +89,11 @@ pub fn parse(src: &str) -> Result<Program, ParseError> {
             .ok_or_else(|| at("first instruction must be `qubits N`".into()))?;
 
         match cmd {
-            "h" | "x" | "y" | "z" | "s" | "t" | "sdg" | "tdg" => {
+            "id" | "h" | "x" | "y" | "z" | "s" | "t" | "sdg" | "tdg" => {
                 expect_arity(&toks, 2).map_err(&at)?;
                 let q = parse_qubit(&toks, 1, n).map_err(&at)?;
                 match cmd {
+                    "id" => c.id(q),
                     "h" => c.h(q),
                     "x" => c.x(q),
                     "y" => c.y(q),
