@@ -7,6 +7,14 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- OpenQASM `gate name(params) qargs { ... }` declarations are now imported,
+  expanded at each call site with the actual angles and qubits substituted in.
+  Bodies may call other declarations and use expressions over the formal
+  parameters. This is what Qiskit emits for any composite gate, so files it
+  exports now import. A file's own declaration shadows the built-in of the same
+  name. Expansion is bounded by a nesting depth and a total-gate budget, so a
+  short file cannot describe an unbounded one.
+- The OpenQASM 2 primitives `U(theta,phi,lambda)` and `CX`.
 - Angles in both front ends are now arithmetic expressions rather than a
   literal or a multiple of pi: `+ - * / ^`, parentheses, unary sign, and
   `sin`/`cos`/`tan`/`exp`/`ln`/`sqrt`, over numbers, `pi`, and (inside a

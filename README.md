@@ -167,7 +167,9 @@ cx q[0],q[1];
 Supported gates: `id x y z h s t sdg tdg`, `rx/ry/rz(theta)`, `u1(lambda)`
 (alias `p`), `u2(phi,lambda)`, `u3(theta,phi,lambda)`, `cx`, `cy`, `cz`, `ch`,
 `crz(theta)`, `cu1(lambda)` (alias `cp`), `cu3(theta,phi,lambda)`, `swap`,
-`ccx`, `cswap`. Multiple `qreg`s map into one flat qubit space in declaration order;
+`ccx`, `cswap`, and the primitives `U`, `CX`; plus `gate` declarations, which
+are expanded at each call site (so files Qiskit exports for composite gates
+import). Multiple `qreg`s map into one flat qubit space in declaration order;
 `creg`, `barrier`, and `measure` are accepted and ignored; anything outside
 the subset is reported rather than silently mis-simulated.
 

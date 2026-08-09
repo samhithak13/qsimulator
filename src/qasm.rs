@@ -20,14 +20,20 @@
 //!   expressions, shared with the text program format: numbers, `pi`, the
 //!   operators `+ - * / ^`, parentheses, and
 //!   `sin`/`cos`/`tan`/`exp`/`ln`/`sqrt`.
+//! - `U(theta,phi,lambda)` and `CX`, the two OpenQASM 2 primitives.
+//! - `gate name(params) qargs { ... }` declarations, expanded at each call
+//!   site with the actual angles and qubits substituted in. Bodies may call
+//!   other declarations, and their angles are expressions over the formal
+//!   parameters. A file's own declaration wins over the built-in of the same
+//!   name, so a program written against the primitives behaves as written.
 //! - `//` line comments and `/* ... */` block comments.
 //!
-//! Anything else — custom `gate` definitions, `if`, `reset`, etc. — is
-//! reported as an unsupported-feature error rather than silently
-//! mis-simulated.
+//! Anything else — `if`, `opaque`, `reset` — is reported as an
+//! unsupported-feature error rather than silently mis-simulated. Note that
+//! `include` is *ignored*, not honoured: gates that `qelib1.inc` would supply
+//! are recognised only where they are implemented natively above.
 
 use crate::error::ParseError;
-use crate::program::parse_angle;
 use crate::Circuit;
 use std::collections::HashMap;
 
@@ -77,16 +83,30 @@ fn parse_inner(src: &str) -> Result<Circuit, String> {
     }
     let mut circuit = Circuit::new(total);
 
-    // Pass 2: apply gates.
+    // Pass 2: collect `gate` declarations, so a call may precede its
+    // declaration textually even though OpenQASM does not require that.
+    let mut defs: HashMap<String, GateDef> = HashMap::new();
+    for stmt in &statements {
+        if keyword(stmt) == "gate" {
+            let (name, def) = parse_gate_def(stmt)?;
+            if defs.contains_key(&name) {
+                return Err(format!("duplicate `gate {name}` declaration"));
+            }
+            defs.insert(name, def);
+        }
+    }
+
+    // Pass 3: apply gates.
+    let mut budget = MAX_EXPANDED_OPS;
     for stmt in &statements {
         match keyword(stmt) {
             // Declarations and no-ops we accept and skip.
-            "OPENQASM" | "include" | "qreg" | "creg" | "barrier" | "measure" => continue,
+            "OPENQASM" | "include" | "qreg" | "creg" | "barrier" | "measure" | "gate" => continue,
             // Features we deliberately reject rather than mis-simulate.
-            "gate" | "opaque" | "if" | "reset" => {
+            "opaque" | "if" | "reset" => {
                 return Err(format!("unsupported OpenQASM feature `{}`", keyword(stmt)));
             }
-            _ => apply_gate(&mut circuit, stmt, &regs)?,
+            _ => apply_gate(&mut circuit, stmt, &regs, &defs, &mut budget)?,
         }
     }
     Ok(circuit)
@@ -176,26 +196,230 @@ fn parse_reg_decl(stmt: &str) -> Result<(String, usize), String> {
     Ok((name, size))
 }
 
-/// Parse and apply a single gate statement to `circuit`.
+/// A user `gate` declaration: its formal angle parameters, its formal qubit
+/// arguments, and the statements of its body, all unresolved.
+struct GateDef {
+    params: Vec<String>,
+    qargs: Vec<String>,
+    body: Vec<String>,
+}
+
+/// How deeply user gates may nest. OpenQASM 2 forbids recursion (a body may
+/// only call gates already declared), but a malformed file can still describe a
+/// cycle, and this bounds it.
+const MAX_GATE_DEPTH: usize = 64;
+
+/// How many primitive gates a program may expand to. A short file can describe
+/// an exponential expansion — each of `n` definitions calling the previous one
+/// twice is `2^n` gates — so the budget, not the input size, is what bounds the
+/// work and the memory it would take. Far above any real circuit this engine
+/// could simulate anyway: 30 qubits is the register ceiling.
+const MAX_EXPANDED_OPS: usize = 100_000;
+
+/// Parse `gate name(params) qargs { body }` into its declaration.
+fn parse_gate_def(stmt: &str) -> Result<(String, GateDef), String> {
+    let rest = stmt
+        .strip_prefix("gate")
+        .ok_or_else(|| format!("malformed gate declaration `{stmt}`"))?;
+    let open = rest
+        .find('{')
+        .ok_or_else(|| format!("gate declaration needs a `{{ ... }}` body: `{stmt}`"))?;
+    let close = rest
+        .rfind('}')
+        .ok_or_else(|| format!("gate declaration needs `}}`: `{stmt}`"))?;
+    if close < open {
+        return Err(format!("malformed gate declaration `{stmt}`"));
+    }
+
+    let (head, qargs_str) = split_head(rest[..open].trim());
+    let (name, params) = parse_head(head);
+    if name.is_empty() {
+        return Err(format!("gate declaration needs a name: `{stmt}`"));
+    }
+    let params = parse_identifiers(params.unwrap_or(""), "parameter", stmt)?;
+    let qargs = parse_identifiers(qargs_str, "qubit argument", stmt)?;
+    if qargs.is_empty() {
+        return Err(format!("`gate {name}` needs at least one qubit argument"));
+    }
+
+    let body = rest[open + 1..close]
+        .split(';')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect();
+    Ok((
+        name.to_string(),
+        GateDef {
+            params,
+            qargs,
+            body,
+        },
+    ))
+}
+
+/// Parse a comma-separated list of formal names, rejecting duplicates and
+/// anything that is not an identifier.
+fn parse_identifiers(list: &str, kind: &str, stmt: &str) -> Result<Vec<String>, String> {
+    let list = list.trim();
+    if list.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut names = Vec::new();
+    for raw in list.split(',') {
+        let name = raw.trim();
+        let is_identifier = !name.is_empty()
+            && name.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_')
+            && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+        if !is_identifier {
+            return Err(format!("invalid {kind} `{name}` in `{stmt}`"));
+        }
+        if names.iter().any(|n| n == name) {
+            return Err(format!("duplicate {kind} `{name}` in `{stmt}`"));
+        }
+        names.push(name.to_string());
+    }
+    Ok(names)
+}
+
+/// Evaluate a gate's parenthesised angle list against `vars`.
+fn parse_angle_list(
+    params: Option<&str>,
+    vars: &HashMap<String, f64>,
+    stmt: &str,
+) -> Result<Vec<f64>, String> {
+    match params {
+        Some(p) if !p.trim().is_empty() => p
+            .split(',')
+            .map(|a| crate::expr::eval(a.trim(), vars))
+            .collect::<Result<_, _>>()
+            .map_err(|e| format!("{e} in `{stmt}`")),
+        _ => Ok(Vec::new()),
+    }
+}
+
+/// Parse and apply a single gate statement to `circuit`, resolving its operands
+/// against the register map.
 fn apply_gate(
     circuit: &mut Circuit,
     stmt: &str,
     regs: &HashMap<String, Reg>,
+    defs: &HashMap<String, GateDef>,
+    budget: &mut usize,
 ) -> Result<(), String> {
     let (head, operands_str) = split_head(stmt);
     let (name, params) = parse_head(head);
     let q = parse_operands(operands_str, regs)?;
+    let angles = parse_angle_list(params, &HashMap::new(), stmt)?;
+    apply_resolved(circuit, name, &angles, &q, defs, budget, 0, stmt)
+}
 
-    // Parse the parenthesized angle parameters, if any.
-    let angles: Vec<f64> = match params {
-        Some(p) if !p.trim().is_empty() => p
+/// Apply a gate whose angles and qubits are already resolved to values —
+/// expanding it if it is a user declaration, otherwise applying the builtin.
+#[allow(clippy::too_many_arguments)]
+fn apply_resolved(
+    circuit: &mut Circuit,
+    name: &str,
+    angles: &[f64],
+    q: &[usize],
+    defs: &HashMap<String, GateDef>,
+    budget: &mut usize,
+    depth: usize,
+    stmt: &str,
+) -> Result<(), String> {
+    // A file's own declarations win, so a program that defines `cx` in terms of
+    // the OpenQASM primitives (the way qelib1 itself does) behaves as written.
+    if let Some(def) = defs.get(name) {
+        return expand_user_gate(circuit, name, def, angles, q, defs, budget, depth, stmt);
+    }
+    *budget = budget.checked_sub(1).ok_or_else(|| {
+        format!("program expands to more than {MAX_EXPANDED_OPS} gates; is a `gate` recursive?")
+    })?;
+    apply_builtin(circuit, name, angles, q, stmt)
+}
+
+/// Substitute a call's actual angles and qubits into a declaration's body and
+/// apply each statement.
+#[allow(clippy::too_many_arguments)]
+fn expand_user_gate(
+    circuit: &mut Circuit,
+    name: &str,
+    def: &GateDef,
+    angles: &[f64],
+    q: &[usize],
+    defs: &HashMap<String, GateDef>,
+    budget: &mut usize,
+    depth: usize,
+    stmt: &str,
+) -> Result<(), String> {
+    if depth >= MAX_GATE_DEPTH {
+        return Err(format!(
+            "`gate` calls nested more than {MAX_GATE_DEPTH} deep at `{name}`; is it recursive?"
+        ));
+    }
+    if def.params.len() != angles.len() || def.qargs.len() != q.len() {
+        return Err(format!(
+            "`{name}` takes {} qubit(s) and {} angle(s), got {} and {} in `{stmt}`",
+            def.qargs.len(),
+            def.params.len(),
+            q.len(),
+            angles.len()
+        ));
+    }
+
+    let vars: HashMap<String, f64> = def
+        .params
+        .iter()
+        .cloned()
+        .zip(angles.iter().copied())
+        .collect();
+    let qubits: HashMap<&str, usize> = def
+        .qargs
+        .iter()
+        .map(String::as_str)
+        .zip(q.iter().copied())
+        .collect();
+
+    for body_stmt in &def.body {
+        let (head, operands_str) = split_head(body_stmt);
+        let (body_name, body_params) = parse_head(head);
+        // `barrier` is scheduling only, and carries no operands we must resolve.
+        if body_name == "barrier" {
+            continue;
+        }
+        let body_angles = parse_angle_list(body_params, &vars, body_stmt)?;
+        let body_qubits = operands_str
             .split(',')
-            .map(|a| parse_angle(a.trim()))
-            .collect::<Result<_, _>>()
-            .map_err(|e| format!("{e} in `{stmt}`"))?,
-        _ => Vec::new(),
-    };
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(|operand| {
+                qubits.get(operand).copied().ok_or_else(|| {
+                    format!("`{operand}` is not a qubit argument of `{name}` in `{body_stmt}`")
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        apply_resolved(
+            circuit,
+            body_name,
+            &body_angles,
+            &body_qubits,
+            defs,
+            budget,
+            depth + 1,
+            body_stmt,
+        )?;
+    }
+    Ok(())
+}
 
+/// Apply one of the built-in gates by name.
+fn apply_builtin(
+    circuit: &mut Circuit,
+    name: &str,
+    angles: &[f64],
+    q: &[usize],
+    stmt: &str,
+) -> Result<(), String> {
     // Validate the operand and angle counts for the named gate.
     let want = |nq: usize, na: usize| -> Result<(), String> {
         if q.len() != nq {
@@ -259,7 +483,10 @@ fn apply_gate(
             want(1, 2)?;
             circuit.u2(angles[0], angles[1], q[0]);
         }
-        "u3" => {
+        // `U` and `CX` are the two OpenQASM 2 primitives that qelib1 itself is
+        // defined in terms of, so a program that pastes those definitions in
+        // rather than relying on the include still works.
+        "u3" | "U" => {
             want(1, 3)?;
             circuit.u3(angles[0], angles[1], angles[2], q[0]);
         }
@@ -275,56 +502,56 @@ fn apply_gate(
             want(1, 1)?;
             circuit.rz(angles[0], q[0]);
         }
-        "cx" => {
+        "cx" | "CX" => {
             want(2, 0)?;
-            require_distinct(&q, stmt)?;
+            require_distinct(q, stmt)?;
             circuit.cnot(q[0], q[1]);
         }
         "cy" => {
             want(2, 0)?;
-            require_distinct(&q, stmt)?;
+            require_distinct(q, stmt)?;
             circuit.cy(q[0], q[1]);
         }
         "cz" => {
             want(2, 0)?;
-            require_distinct(&q, stmt)?;
+            require_distinct(q, stmt)?;
             circuit.cz(q[0], q[1]);
         }
         "ch" => {
             want(2, 0)?;
-            require_distinct(&q, stmt)?;
+            require_distinct(q, stmt)?;
             circuit.ch(q[0], q[1]);
         }
         "crz" => {
             want(2, 1)?;
-            require_distinct(&q, stmt)?;
+            require_distinct(q, stmt)?;
             circuit.crz(angles[0], q[0], q[1]);
         }
         // `cu1(lambda)` is the OpenQASM 2 controlled phase; `cp` is its
         // OpenQASM 3 name.
         "cu1" | "cp" => {
             want(2, 1)?;
-            require_distinct(&q, stmt)?;
+            require_distinct(q, stmt)?;
             circuit.cp(angles[0], q[0], q[1]);
         }
         "cu3" => {
             want(2, 3)?;
-            require_distinct(&q, stmt)?;
+            require_distinct(q, stmt)?;
             circuit.cu3(angles[0], angles[1], angles[2], q[0], q[1]);
         }
         "swap" => {
             want(2, 0)?;
-            require_distinct(&q, stmt)?;
+            require_distinct(q, stmt)?;
             circuit.swap(q[0], q[1]);
         }
         "cswap" => {
             want(3, 0)?;
-            require_distinct(&q, stmt)?;
+            require_distinct(q, stmt)?;
             circuit.cswap(q[0], q[1], q[2]);
         }
         "ccx" => {
             want(3, 0)?;
-            require_distinct(&q, stmt)?;
+            require_distinct(q, stmt)?;
             circuit.toffoli(q[0], q[1], q[2]);
         }
         other => return Err(format!("unsupported gate `{other}` in `{stmt}`")),

@@ -6,6 +6,15 @@
 use approx::assert_relative_eq;
 use qsimulator::{qasm, Circuit, State};
 
+/// Assert two states agree amplitude by amplitude — stricter than comparing
+/// probabilities, since an expanded `gate` body must reproduce phases too.
+fn assert_same_amplitudes(a: &State, b: &State) {
+    assert_eq!(a.n_qubits(), b.n_qubits());
+    for (i, (x, y)) in a.amplitudes().iter().zip(b.amplitudes()).enumerate() {
+        assert!((x - y).norm() < 1e-12, "amplitude {i} differs: {x} vs {y}");
+    }
+}
+
 /// Assert two states have the same per-basis-state probabilities.
 fn assert_same_probs(a: &State, b: &State) {
     assert_eq!(a.n_qubits(), b.n_qubits());
@@ -291,13 +300,12 @@ fn bundled_bell_qasm_matches_builder() {
 /// without one, so splitting statements naively on `;` glued the closing brace
 /// onto the next statement. Since `gate` blocks conventionally come *before*
 /// `qreg` — that is how Qiskit emits them — the register declaration was
-/// swallowed and the parser blamed a missing `qreg` instead of the real cause.
+/// swallowed and the parser reported a missing `qreg` for a file that had one.
 #[test]
-fn gate_block_before_qreg_reports_the_real_cause() {
+fn gate_block_before_qreg_finds_the_register() {
     let src = "OPENQASM 2.0;\ngate g a { h a; }\nqreg q[1];\nh q[0];\n";
-    let err = qasm::parse(src).unwrap_err().to_string();
-    assert!(err.contains("unsupported OpenQASM feature `gate`"), "{err}");
-    assert!(!err.contains("no `qreg`"), "{err}");
+    let c = qasm::parse(src).expect("the qreg after a gate body must be seen");
+    assert_eq!(c.run().n_qubits(), 1);
 }
 
 /// Unbalanced braces are reported as such, not as some downstream confusion.
@@ -312,4 +320,135 @@ fn unbalanced_braces_are_reported() {
         .unwrap_err()
         .to_string();
     assert!(close.contains("unexpected `}`"), "{close}");
+}
+
+/// A `gate` declaration is expanded at its call site, so a circuit written
+/// with one matches the same circuit written with the primitives.
+#[test]
+fn gate_declaration_expands() {
+    let src = "\
+OPENQASM 2.0;
+gate bell a,b { h a; cx a,b; }
+qreg q[2];
+bell q[0],q[1];
+";
+    let expanded = qasm::parse(src).expect("should parse");
+    let direct = qasm::parse("qreg q[2];\nh q[0];\ncx q[0],q[1];\n").unwrap();
+    assert_same_amplitudes(&expanded.run(), &direct.run());
+}
+
+/// Parameters are substituted into the body's angle expressions, which may be
+/// arithmetic over them.
+#[test]
+fn gate_declaration_takes_parameters() {
+    let src = "\
+OPENQASM 2.0;
+gate myrz(theta) a { u1(theta/2) a; u1(theta/2) a; }
+qreg q[1];
+h q[0];
+myrz(0.8) q[0];
+";
+    let expanded = qasm::parse(src).expect("should parse");
+    let direct = qasm::parse("qreg q[1];\nh q[0];\nu1(0.8) q[0];\n").unwrap();
+    assert_same_amplitudes(&expanded.run(), &direct.run());
+}
+
+/// A body may call another declaration, and qubit arguments are remapped at
+/// each level — including when the caller passes them in a different order.
+#[test]
+fn gate_declarations_nest_and_remap_qubits() {
+    let src = "\
+OPENQASM 2.0;
+gate flip a { x a; }
+gate pair a,b { flip b; cx b,a; }
+qreg q[2];
+pair q[0],q[1];
+";
+    let expanded = qasm::parse(src).expect("should parse");
+    let direct = qasm::parse("qreg q[2];\nx q[1];\ncx q[1],q[0];\n").unwrap();
+    assert_same_amplitudes(&expanded.run(), &direct.run());
+}
+
+/// The OpenQASM primitives `U` and `CX` work, so a program that defines the
+/// standard gates itself — the way `qelib1.inc` does — runs.
+#[test]
+fn openqasm_primitives_are_supported() {
+    let src = "\
+OPENQASM 2.0;
+gate myh a { U(pi/2,0,pi) a; }
+gate mycx c,t { CX c,t; }
+qreg q[2];
+myh q[0];
+mycx q[0],q[1];
+";
+    let expanded = qasm::parse(src).expect("should parse");
+    let direct = qasm::parse("qreg q[2];\nh q[0];\ncx q[0],q[1];\n").unwrap();
+    assert_same_amplitudes(&expanded.run(), &direct.run());
+}
+
+/// A declaration shadows the built-in of the same name, so the file's own
+/// definition is what runs.
+#[test]
+fn declaration_shadows_the_builtin() {
+    // Redefine `x` as a no-op; the qubit must stay in |0>.
+    let src = "OPENQASM 2.0;\ngate x a { id a; }\nqreg q[1];\nx q[0];\n";
+    let c = qasm::parse(src).expect("should parse");
+    assert!(c.run().probability(0) > 1.0 - 1e-12);
+}
+
+/// Malformed and abusive declarations are rejected with a message that names
+/// the problem — including the two guards against a runaway expansion.
+#[test]
+fn gate_declaration_errors() {
+    let cases = [
+        // Wrong number of qubits at the call site.
+        (
+            "gate g a,b { cx a,b; }\nqreg q[2];\ng q[0];",
+            "takes 2 qubit(s) and 0 angle(s)",
+        ),
+        // Wrong number of angles.
+        (
+            "gate g(t) a { u1(t) a; }\nqreg q[1];\ng q[0];",
+            "takes 1 qubit(s) and 1 angle(s)",
+        ),
+        // The body names a qubit that is not a formal argument.
+        (
+            "gate g a { cx a,zz; }\nqreg q[2];\ng q[0];",
+            "not a qubit argument",
+        ),
+        // The body uses an unknown angle name.
+        (
+            "gate g a { u1(nope) a; }\nqreg q[1];\ng q[0];",
+            "unknown name",
+        ),
+        (
+            "gate g a { h a; }\ngate g a { x a; }\nqreg q[1];\ng q[0];",
+            "duplicate `gate g`",
+        ),
+        ("gate g { h a; }\nqreg q[1];", "at least one qubit argument"),
+        (
+            "gate g a,a { h a; }\nqreg q[1];\ng q[0];",
+            "duplicate qubit argument",
+        ),
+        // Direct recursion must terminate rather than blow the stack.
+        ("gate g a { g a; }\nqreg q[1];\ng q[0];", "recursive"),
+    ];
+    for (src, needle) in cases {
+        let err = qasm::parse(src).unwrap_err().to_string();
+        assert!(err.contains(needle), "for `{src}`: {err}");
+    }
+}
+
+/// A short file can describe an exponential expansion, so the budget — not the
+/// input length — is what bounds the work.
+#[test]
+fn exponential_expansion_is_bounded() {
+    let mut src = String::from("gate g0 a { x a; }\n");
+    for i in 1..40 {
+        src.push_str(&format!("gate g{i} a {{ g{} a; g{} a; }}\n", i - 1, i - 1));
+    }
+    src.push_str("qreg q[1];\ng39 q[0];\n");
+
+    let err = qasm::parse(&src).unwrap_err().to_string();
+    assert!(err.contains("expands to more than"), "{err}");
 }
