@@ -17,6 +17,9 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   parser coverage — raising line coverage to ~97%.
 - A CI coverage job (`cargo llvm-cov`) that fails if line coverage drops below
   90%.
+- Text program instructions `mcx C... T` and `mcu3 THETA PHI LAMBDA C... T`,
+  which take any number of controls, so multi-controlled gates are reachable
+  from the CLI.
 
 ### Changed
 - The `parallel` feature now also threads the controlled and multi-controlled

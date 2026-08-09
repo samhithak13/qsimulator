@@ -175,11 +175,45 @@ cu3 0.1 0.2 0.3 0 2
 swap 0 2
 toffoli 0 1 2
 cswap 0 1 2
+mcx 0 1 2
+mcu3 0.1 0.2 0.3 0 1 2
 sample 100 42
 ";
     let prog = program::parse(src).expect("should parse");
     assert!(prog.sample.is_some());
     assert!((prog.circuit.run().norm() - 1.0).abs() < 1e-9);
+}
+
+/// `mcx` takes any number of controls: with all three controls set it flips
+/// the target, and it leaves every other basis state alone.
+#[test]
+fn mcx_flips_only_the_all_controls_set_state() {
+    let prog = program::parse("qubits 4\nh 0\nh 1\nh 2\nmcx 0 1 2 3\n").expect("should parse");
+    let state = prog.circuit.run();
+    // |0111> (controls set, target clear) is the one state that moved, to
+    // |1111>; the other seven keep their target at 0.
+    assert_relative_eq!(state.probability(0b0111), 0.0, epsilon = 1e-12);
+    assert_relative_eq!(state.probability(0b1111), 0.125, epsilon = 1e-12);
+    for i in [0b0000, 0b0001, 0b0010, 0b0011, 0b0100, 0b0101, 0b0110] {
+        assert_relative_eq!(state.probability(i), 0.125, epsilon = 1e-12);
+    }
+}
+
+/// `mcu3` with theta = 0 is a multi-controlled phase, so it flips the sign of
+/// the all-ones amplitude and leaves the probabilities untouched.
+#[test]
+fn mcu3_applies_a_multi_controlled_phase() {
+    let prog = program::parse("qubits 3\nh 0\nh 1\nh 2\nmcu3 0 0 pi 0 1 2\n").expect("parse");
+    let amps = prog.circuit.run().amplitudes().to_vec();
+    for (i, a) in amps.iter().enumerate() {
+        let want = if i == 0b111 {
+            -0.125f64.sqrt()
+        } else {
+            0.125f64.sqrt()
+        };
+        assert_relative_eq!(a.re, want, epsilon = 1e-12);
+        assert_relative_eq!(a.im, 0.0, epsilon = 1e-12);
+    }
 }
 
 #[test]
@@ -190,6 +224,11 @@ fn native_error_paths() {
         ("qubits 2\ncrz 0.5 1 1\n", "must differ"),
         ("qubits 3\ncswap 0 1 1\n", "must be distinct"),
         ("qubits 3\ntoffoli 0 1 1\n", "must differ"),
+        ("qubits 3\nmcx 0 1 1\n", "is repeated"),
+        ("qubits 3\nmcx 2\n", "at least 3 tokens"),
+        ("qubits 3\nmcu3 0.1 0.2 0.3 2\n", "at least 6 tokens"),
+        ("qubits 3\nmcu3 nope 0.2 0.3 0 2\n", "invalid angle"),
+        ("qubits 3\nmcx 0 9\n", "out of range"),
         (
             "qubits 2\nh 0\nsample 1 1\nsample 2 2\n",
             "may only appear once",

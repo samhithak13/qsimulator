@@ -185,11 +185,14 @@ PROGRAM FORMAT (one instruction per line; `#` starts a comment):
     rx|ry|rz|p THETA Q         Rotation/phase by THETA (float, or pi, pi/2, ...)
     u2 PHI LAMBDA Q            General single-qubit gate U2
     u3 THETA PHI LAMBDA Q      General single-qubit gate U3
-    cnot|cz C T                Two-qubit controlled gate (control C, target T)
+    cnot|cy|cz|ch C T          Two-qubit controlled gate (control C, target T)
     crz|cp THETA C T           Controlled-Rz / controlled-phase by THETA
     cu3 THETA PHI LAMBDA C T   Controlled-U3
     swap A B                   Exchange qubits A and B
+    cswap C A B                Controlled swap (Fredkin)
     toffoli C1 C2 T            CCNOT
+    mcx C... T                 Multi-controlled X, any number of controls
+    mcu3 THETA PHI LAMBDA C... T   Multi-controlled U3
     sample SHOTS SEED          Sample the final state (optional, once)
 
 EXAMPLE (GHZ state):

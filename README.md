@@ -134,8 +134,10 @@ sample 1000 42
 
 Instructions: `qubits N`; `h|x|y|z|s|t|sdg|tdg Q`; `rx|ry|rz|p THETA Q`
 (THETA is a float or a symbolic multiple of pi like `pi/2`, `-pi/4`, `2pi`);
-`u2 PHI LAMBDA Q`; `u3 THETA PHI LAMBDA Q`; `cnot|cz C T`; `crz|cp THETA C T`;
-`swap A B`; `toffoli C1 C2 T`; and an optional `sample SHOTS SEED`.
+`u2 PHI LAMBDA Q`; `u3 THETA PHI LAMBDA Q`; `cnot|cy|cz|ch C T`;
+`crz|cp THETA C T`; `cu3 THETA PHI LAMBDA C T`; `swap A B`; `cswap C A B`;
+`toffoli C1 C2 T`; the open-ended `mcx C... T` and
+`mcu3 THETA PHI LAMBDA C... T`; and an optional `sample SHOTS SEED`.
 
 ## OpenQASM 2.0
 
@@ -158,10 +160,11 @@ Supported gates: `x y z h s t sdg tdg`, `rx/ry/rz(theta)`, `u1(lambda)`
 the subset is reported rather than silently mis-simulated.
 
 `Circuit::to_qasm()` (and `qsimulator --emit-qasm <FILE>`) writes a circuit
-back out as OpenQASM 2.0. Circuits built from the supported gates round-trip
-exactly through the importer; an arbitrary controlled-U is decomposed into a
-control phase plus `cu3`. Only a multi-controlled-U or a multi-controlled-X
-with a control count other than two returns an export error.
+back out as OpenQASM 2.0, and every gate in the builder round-trips exactly
+through the importer. Gates with no OpenQASM 2 equivalent are decomposed into
+ones that have one: an arbitrary controlled-U into a control phase plus `cu3`,
+and a multi-controlled gate of any width into Toffolis and single-qubit
+rotations.
 
 ## Status
 

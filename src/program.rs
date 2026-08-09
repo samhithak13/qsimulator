@@ -16,9 +16,10 @@
 //! rotations `rx/ry/rz THETA Q`, phase `p THETA Q`, and the general
 //! `u2 PHI LAMBDA Q` / `u3 THETA PHI LAMBDA Q`; two-qubit `cnot/cy/cz/ch C T`,
 //! `crz/cp THETA C T`, `cu3 THETA PHI LAMBDA C T`, and `swap A B`; three-qubit
-//! `toffoli C1 C2 T` and `cswap C A B`; and a terminal `sample SHOTS SEED`.
-//! Angles are a plain float or a symbolic multiple of pi such as `pi`, `pi/2`,
-//! `-pi/4`, or `2pi`.
+//! `toffoli C1 C2 T` and `cswap C A B`; the open-ended multi-controlled
+//! `mcx C... T` and `mcu3 THETA PHI LAMBDA C... T`; and a terminal
+//! `sample SHOTS SEED`. Angles are a plain float or a symbolic multiple of pi
+//! such as `pi`, `pi/2`, `-pi/4`, or `2pi`.
 
 use crate::error::ParseError;
 use crate::Circuit;
@@ -195,6 +196,19 @@ pub fn parse(src: &str) -> Result<Program, ParseError> {
                 }
                 c.toffoli(c1, c2, tgt);
             }
+            // Multi-controlled gates: every token but the last is a control,
+            // the last is the target, so the arity is open-ended.
+            "mcx" => {
+                let (controls, tgt) = parse_control_list(&toks, 1, n).map_err(&at)?;
+                c.mcx(&controls, tgt);
+            }
+            "mcu3" => {
+                let theta = parse_angle(toks.get(1).copied().unwrap_or("")).map_err(&at)?;
+                let phi = parse_angle(toks.get(2).copied().unwrap_or("")).map_err(&at)?;
+                let lambda = parse_angle(toks.get(3).copied().unwrap_or("")).map_err(&at)?;
+                let (controls, tgt) = parse_control_list(&toks, 4, n).map_err(&at)?;
+                c.mcu(crate::gates::u3(theta, phi, lambda), &controls, tgt);
+            }
             "sample" => {
                 if sample.is_some() {
                     return Err(at("`sample` may only appear once".into()));
@@ -229,6 +243,36 @@ fn expect_arity(toks: &[&str], k: usize) -> Result<(), String> {
             toks.len()
         ))
     }
+}
+
+/// Parse the qubit list of a multi-controlled instruction: tokens from `start`
+/// to the end, where the last is the target and the rest are controls.
+///
+/// Requires at least one control (use the plain gate for none) and rejects a
+/// repeated qubit, which would mean controlling a gate on its own target.
+fn parse_control_list(
+    toks: &[&str],
+    start: usize,
+    n: usize,
+) -> Result<(Vec<usize>, usize), String> {
+    if toks.len() < start + 2 {
+        return Err(format!(
+            "`{}` expects at least {} tokens (one or more controls, then a target), got {}",
+            toks[0],
+            start + 2,
+            toks.len()
+        ));
+    }
+    let qubits: Vec<usize> = (start..toks.len())
+        .map(|i| parse_qubit(toks, i, n))
+        .collect::<Result<_, _>>()?;
+    for (i, q) in qubits.iter().enumerate() {
+        if qubits[..i].contains(q) {
+            return Err(format!("qubit {q} is repeated; all must be distinct"));
+        }
+    }
+    let (&target, controls) = qubits.split_last().expect("checked non-empty above");
+    Ok((controls.to_vec(), target))
 }
 
 /// Parse token `idx` as a qubit index and bounds-check it against `n`.
