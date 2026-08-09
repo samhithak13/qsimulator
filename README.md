@@ -133,7 +133,9 @@ sample 1000 42
 ```
 
 Instructions: `qubits N`; `id|h|x|y|z|s|t|sdg|tdg Q`; `rx|ry|rz|p THETA Q`
-(THETA is a float or a symbolic multiple of pi like `pi/2`, `-pi/4`, `2pi`);
+(THETA is an arithmetic expression over numbers and `pi`, like `pi/2`, `-pi/4`,
+`2pi`, or `(pi/4+0.1)*2` — one unspaced token, since instructions split on
+whitespace);
 `u2 PHI LAMBDA Q`; `u3 THETA PHI LAMBDA Q`; `cnot|cy|cz|ch C T`;
 `crz|cp THETA C T`; `cu3 THETA PHI LAMBDA C T`; `swap A B`; `cswap C A B`;
 `toffoli C1 C2 T`; the open-ended `mcx C... T` and

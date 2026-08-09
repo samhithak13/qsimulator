@@ -18,12 +18,12 @@
 //! `crz/cp THETA C T`, `cu3 THETA PHI LAMBDA C T`, and `swap A B`; three-qubit
 //! `toffoli C1 C2 T` and `cswap C A B`; the open-ended multi-controlled
 //! `mcx C... T` and `mcu3 THETA PHI LAMBDA C... T`; and a terminal
-//! `sample SHOTS SEED`. Angles are a plain float or a symbolic multiple of pi
-//! such as `pi`, `pi/2`, `-pi/4`, or `2pi`.
+//! `sample SHOTS SEED`. An angle is an arithmetic expression over numbers and
+//! `pi` — `0.7`, `pi`, `pi/2`, `-pi/4`, `2pi`, or `(pi/4 + 0.1)*2` — with the
+//! operators `+ - * / ^`, parentheses, and `sin`/`cos`/`tan`/`exp`/`ln`/`sqrt`.
 
 use crate::error::ParseError;
 use crate::Circuit;
-use std::f64::consts::PI;
 
 /// Largest register a program may declare, matching the OpenQASM importer.
 /// Guards against a malformed huge `qubits N` aborting on allocation.
@@ -288,40 +288,11 @@ fn parse_qubit(toks: &[&str], idx: usize, n: usize) -> Result<usize, String> {
     Ok(q)
 }
 
-/// Parse an angle: a plain float, or a symbolic multiple of pi such as `pi`,
-/// `pi/2`, `-pi/4`, `2pi`, `2*pi`, or `0.5*pi`.
+/// Parse an angle: an arithmetic expression over numbers and `pi`, such as
+/// `0.7`, `pi`, `pi/2`, `-pi/4`, `2pi`, `2*pi`, or `pi/2 + 0.3`.
 ///
-/// Shared with the OpenQASM importer, which uses the same angle syntax.
+/// Shared with the OpenQASM importer, which uses the same angle syntax — see
+/// [`crate::expr`] for the full grammar.
 pub(crate) fn parse_angle(s: &str) -> Result<f64, String> {
-    if let Ok(v) = s.parse::<f64>() {
-        return Ok(v);
-    }
-    let (sign, rest) = match s.strip_prefix('-') {
-        Some(r) => (-1.0, r),
-        None => (1.0, s),
-    };
-    let body = rest.replace('*', "");
-    let (coeff_str, denom_str) = body
-        .find("pi")
-        .map(|i| (&body[..i], &body[i + 2..]))
-        .ok_or_else(|| format!("invalid angle `{s}`"))?;
-
-    let coeff: f64 = if coeff_str.is_empty() {
-        1.0
-    } else {
-        coeff_str
-            .parse()
-            .map_err(|_| format!("invalid angle `{s}`"))?
-    };
-    let denom: f64 = if denom_str.is_empty() {
-        1.0
-    } else if let Some(d) = denom_str.strip_prefix('/') {
-        d.parse().map_err(|_| format!("invalid angle `{s}`"))?
-    } else {
-        return Err(format!("invalid angle `{s}`"));
-    };
-    if denom == 0.0 {
-        return Err(format!("invalid angle `{s}` (division by zero)"));
-    }
-    Ok(sign * coeff * PI / denom)
+    crate::expr::eval(s, &std::collections::HashMap::new())
 }

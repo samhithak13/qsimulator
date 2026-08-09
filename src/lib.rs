@@ -23,6 +23,7 @@
 
 pub mod circuit;
 pub mod error;
+mod expr;
 pub mod gates;
 pub mod program;
 pub mod qasm;

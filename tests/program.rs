@@ -247,6 +247,18 @@ fn angle_forms_and_errors() {
     let p = program::parse("qubits 1\nrz -pi/2 0\nrz 2pi 0\n").expect("should parse");
     assert!((p.circuit.run().norm() - 1.0).abs() < 1e-12);
 
+    // Angles are full arithmetic expressions, so a sum, a parenthesised group,
+    // and a function call all work and agree with the equivalent literal. The
+    // native format splits on whitespace, so an angle is one unspaced token.
+    let expr = program::parse("qubits 1\nrx (pi/4+pi/4)*2 0\n").expect("should parse");
+    let literal = program::parse("qubits 1\nrx pi 0\n").unwrap();
+    assert_relative_eq!(
+        expr.circuit.run().probability(1),
+        literal.circuit.run().probability(1),
+        epsilon = 1e-12
+    );
+    assert!(program::parse("qubits 1\nrz sqrt(4)*pi 0\n").is_ok());
+
     for (src, needle) in [
         ("qubits 1\nrx bogus 0\n", "invalid angle"),
         ("qubits 1\nrx pi/0 0\n", "division by zero"),

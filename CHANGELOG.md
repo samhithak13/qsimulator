@@ -6,6 +6,13 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- Angles in both front ends are now arithmetic expressions rather than a
+  literal or a multiple of pi: `+ - * / ^`, parentheses, unary sign, and
+  `sin`/`cos`/`tan`/`exp`/`ln`/`sqrt`, over numbers, `pi`, and (inside a
+  `gate` body) the declaration's formal parameters. Every previously accepted
+  form still parses.
+
 ### Fixed
 - OpenQASM import split statements on `;`, which glued a `gate` body's closing
   `}` onto the statement after it. Since `gate` blocks conventionally precede
