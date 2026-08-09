@@ -19,6 +19,9 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   90%.
 - An `id` (identity) gate: `Circuit::id`, `gates::id`, the `id Q` program
   instruction, and OpenQASM `id` import and export.
+- CLI `--shots N` and `--seed S` flags, so any program can be sampled --
+  including an OpenQASM file, which has no way to carry a `sample` directive.
+  They override the program's own directive when it has one.
 - Text program instructions `mcx C... T` and `mcu3 THETA PHI LAMBDA C... T`,
   which take any number of controls, so multi-controlled gates are reachable
   from the CLI.

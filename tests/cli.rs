@@ -104,5 +104,66 @@ fn missing_file_exits_nonzero() {
 fn too_many_args_exits_with_usage_code() {
     let (_out, err, code) = run(&["a", "b", "c"], None);
     assert_eq!(code, 2);
-    assert!(err.contains("unexpected arguments"), "{err}");
+    // The message names the first argument that had nowhere to go.
+    assert!(err.contains("unexpected extra argument `b`"), "{err}");
+}
+
+/// `--shots` samples a program that never asked to be sampled — including an
+/// OpenQASM file, which has no way to carry a `sample` directive at all.
+#[test]
+fn shots_flag_samples_a_program_without_a_directive() {
+    let (stdout, _err, code) = run(&["--shots", "16", "-"], Some("qubits 2\nh 0\ncnot 0 1\n"));
+    assert_eq!(code, 0);
+    assert!(stdout.contains("Sampling 16 shots"), "{stdout}");
+
+    let (qasm_out, _err, code) = run(&["--shots", "16", "programs/bell.qasm"], None);
+    assert_eq!(code, 0);
+    assert!(qasm_out.contains("Sampling 16 shots"), "{qasm_out}");
+}
+
+/// Sampling is a pure function of the seed: same seed, same histogram;
+/// different seed, different histogram.
+#[test]
+fn seed_flag_makes_sampling_reproducible() {
+    let args = ["--shots", "200", "--seed", "7", "programs/bell.qasm"];
+    let (a, _, _) = run(&args, None);
+    let (b, _, _) = run(&args, None);
+    assert_eq!(a, b);
+
+    let (c, _, _) = run(
+        &["--shots", "200", "--seed", "8", "programs/bell.qasm"],
+        None,
+    );
+    assert_ne!(a, c);
+}
+
+/// `--shots` overrides the program's own directive; `--seed` alone re-seeds it
+/// while keeping the shot count.
+#[test]
+fn flags_override_the_sample_directive() {
+    let program = "qubits 2\nh 0\ncnot 0 1\nsample 50 1\n";
+    let (stdout, _err, code) = run(&["--shots", "9", "-"], Some(program));
+    assert_eq!(code, 0);
+    assert!(stdout.contains("Sampling 9 shots (seed = 1)"), "{stdout}");
+
+    let (stdout, _err, code) = run(&["--seed", "42", "-"], Some(program));
+    assert_eq!(code, 0);
+    assert!(stdout.contains("Sampling 50 shots (seed = 42)"), "{stdout}");
+}
+
+/// Flag misuse is a usage error (exit 2), not a silently ignored flag.
+#[test]
+fn sampling_flag_misuse_exits_with_usage_code() {
+    let cases: [&[&str]; 5] = [
+        &["--seed", "3", "programs/bell.qasm"],
+        &["--shots", "4", "--statevector", "programs/bell.qasm"],
+        &["--shots", "abc", "programs/bell.qasm"],
+        &["--shots"],
+        &["--bogus", "programs/bell.qasm"],
+    ];
+    for args in cases {
+        let (_out, err, code) = run(args, None);
+        assert_eq!(code, 2, "for {args:?}: {err}");
+        assert!(err.starts_with("error: "), "for {args:?}: {err}");
+    }
 }

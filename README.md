@@ -139,6 +139,16 @@ Instructions: `qubits N`; `id|h|x|y|z|s|t|sdg|tdg Q`; `rx|ry|rz|p THETA Q`
 `toffoli C1 C2 T`; the open-ended `mcx C... T` and
 `mcu3 THETA PHI LAMBDA C... T`; and an optional `sample SHOTS SEED`.
 
+Sampling flags work on any program, including OpenQASM files, which have no
+way to carry a `sample` directive:
+
+```bash
+qsimulator --shots 1000 --seed 42 programs/bell.qasm
+```
+
+`--shots` overrides the program's own `sample` directive; `--seed` on its own
+re-seeds it. Sampling is a pure function of the seed, so a run repeats exactly.
+
 ## OpenQASM 2.0
 
 A file ending in `.qasm`, or one starting with an `OPENQASM` header, is parsed

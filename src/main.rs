@@ -9,61 +9,173 @@ use qsimulator::{qasm, Circuit};
 use std::io::Read;
 use std::process::ExitCode;
 
+/// What the CLI was asked to produce.
+enum Mode {
+    /// No arguments: the built-in demo.
+    Demo,
+    Help,
+    /// Run the program and print the diagram, probabilities, and any sampling.
+    Run,
+    /// Print the circuit as OpenQASM 2.0.
+    EmitQasm,
+    /// Print the final amplitudes as JSON.
+    Statevector,
+}
+
+/// The parsed command line.
+struct Cli {
+    mode: Mode,
+    path: Option<String>,
+    shots: Option<usize>,
+    seed: Option<u64>,
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    match args.as_slice() {
-        [] => {
-            run_bell_demo();
-            ExitCode::SUCCESS
+    let cli = match parse_args(&args) {
+        Ok(cli) => cli,
+        Err(e) => {
+            eprintln!("error: {e}");
+            eprintln!("try `qsimulator --help`");
+            return ExitCode::from(2);
         }
-        [flag] if flag == "-h" || flag == "--help" => {
+    };
+
+    match cli.mode {
+        Mode::Help => {
             print_help();
-            ExitCode::SUCCESS
+            return ExitCode::SUCCESS;
         }
-        // `--emit-qasm FILE`: parse the input and print it back as OpenQASM.
-        [flag, path] if flag == "--emit-qasm" => match load_circuit(path) {
-            Ok((circuit, _sample)) => match circuit.to_qasm() {
-                Ok(qasm) => {
-                    print!("{qasm}");
-                    ExitCode::SUCCESS
-                }
+        Mode::Demo => {
+            run_bell_demo();
+            return ExitCode::SUCCESS;
+        }
+        _ => {}
+    }
+
+    let path = cli.path.as_deref().expect("a path outside Demo/Help mode");
+    let (circuit, spec) = match load_circuit(path) {
+        Ok(loaded) => loaded,
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    match cli.mode {
+        Mode::EmitQasm => match circuit.to_qasm() {
+            Ok(qasm) => print!("{qasm}"),
+            Err(e) => {
+                eprintln!("error: {e}");
+                return ExitCode::FAILURE;
+            }
+        },
+        Mode::Statevector => print_statevector(&circuit.run()),
+        _ => {
+            let sample = match effective_sample(spec, cli.shots, cli.seed) {
+                Ok(sample) => sample,
                 Err(e) => {
                     eprintln!("error: {e}");
-                    ExitCode::FAILURE
+                    return ExitCode::from(2);
                 }
-            },
-            Err(e) => {
-                eprintln!("error: {e}");
-                ExitCode::FAILURE
-            }
-        },
-        // `--statevector FILE`: print the final amplitudes as JSON, for
-        // machine consumption (e.g. the Qiskit cross-validation harness).
-        [flag, path] if flag == "--statevector" => match load_circuit(path) {
-            Ok((circuit, _sample)) => {
-                print_statevector(&circuit.run());
-                ExitCode::SUCCESS
-            }
-            Err(e) => {
-                eprintln!("error: {e}");
-                ExitCode::FAILURE
-            }
-        },
-        [path] => match load_circuit(path) {
-            Ok((circuit, sample)) => {
-                run_circuit(&circuit, sample);
-                ExitCode::SUCCESS
-            }
-            Err(e) => {
-                eprintln!("error: {e}");
-                ExitCode::FAILURE
-            }
-        },
-        _ => {
-            eprintln!("error: unexpected arguments; expected a program file, `-`, or none");
-            eprintln!("try `qsimulator --help`");
-            ExitCode::from(2)
+            };
+            run_circuit(&circuit, sample);
         }
+    }
+    ExitCode::SUCCESS
+}
+
+/// Parse the command line by hand — the surface is small enough that an
+/// argument-parsing dependency would cost more than it saves.
+fn parse_args(args: &[String]) -> Result<Cli, String> {
+    let mut cli = Cli {
+        mode: Mode::Run,
+        path: None,
+        shots: None,
+        seed: None,
+    };
+    let mut saw_mode_flag = false;
+    let mut rest = args.iter();
+
+    while let Some(arg) = rest.next() {
+        // A flag that takes a value, consuming the next argument.
+        let mut value = |flag: &str| -> Result<String, String> {
+            rest.next()
+                .cloned()
+                .ok_or_else(|| format!("`{flag}` needs a value"))
+        };
+        match arg.as_str() {
+            "-h" | "--help" => {
+                return Ok(Cli {
+                    mode: Mode::Help,
+                    ..cli
+                })
+            }
+            "--emit-qasm" | "--statevector" => {
+                if saw_mode_flag {
+                    return Err("`--emit-qasm` and `--statevector` are exclusive".into());
+                }
+                saw_mode_flag = true;
+                cli.mode = if arg == "--emit-qasm" {
+                    Mode::EmitQasm
+                } else {
+                    Mode::Statevector
+                };
+            }
+            "--shots" => {
+                let v = value("--shots")?;
+                cli.shots = Some(v.parse().map_err(|_| format!("invalid shot count `{v}`"))?);
+            }
+            "--seed" => {
+                let v = value("--seed")?;
+                cli.seed = Some(v.parse().map_err(|_| format!("invalid seed `{v}`"))?);
+            }
+            // `-` is stdin, so only a longer leading dash is an unknown flag.
+            other if other.starts_with('-') && other != "-" => {
+                return Err(format!("unknown flag `{other}`"));
+            }
+            other => {
+                if cli.path.is_some() {
+                    return Err(format!("unexpected extra argument `{other}`"));
+                }
+                cli.path = Some(other.to_string());
+            }
+        }
+    }
+
+    if cli.path.is_none() {
+        if saw_mode_flag || cli.shots.is_some() || cli.seed.is_some() {
+            return Err("expected a program file, or `-` to read stdin".into());
+        }
+        cli.mode = Mode::Demo;
+    }
+    if saw_mode_flag && (cli.shots.is_some() || cli.seed.is_some()) {
+        return Err("`--shots`/`--seed` do not apply to `--emit-qasm` or `--statevector`".into());
+    }
+    Ok(cli)
+}
+
+/// Combine the program's own `sample` directive with the `--shots`/`--seed`
+/// flags, which override it. A seed with nothing to sample is an error rather
+/// than a silently ignored flag.
+fn effective_sample(
+    spec: Option<SampleSpec>,
+    shots: Option<usize>,
+    seed: Option<u64>,
+) -> Result<Option<SampleSpec>, String> {
+    match (shots, seed) {
+        (None, None) => Ok(spec),
+        (Some(shots), seed) => Ok(Some(SampleSpec {
+            shots,
+            seed: seed.or(spec.map(|s| s.seed)).unwrap_or(0),
+        })),
+        (None, Some(seed)) => match spec {
+            Some(s) => Ok(Some(SampleSpec {
+                shots: s.shots,
+                seed,
+            })),
+            None => Err("`--seed` needs `--shots`, or a `sample` directive in the program".into()),
+        },
     }
 }
 
@@ -175,6 +287,15 @@ USAGE:
     qsimulator --emit-qasm <FILE>   Print the circuit as OpenQASM 2.0
     qsimulator --statevector <FILE> Print final amplitudes as JSON
     qsimulator --help          Show this help
+
+OPTIONS:
+    --shots N                  Sample the final state N times, whatever the
+                               program says -- so an OpenQASM file, or one
+                               with no `sample` directive, can be sampled too
+    --seed S                   Seed the sampling RNG (default 0). Sampling is
+                               a pure function of the seed, so a run repeats
+                               exactly. On its own, re-seeds the program's own
+                               `sample` directive.
 
 An input is treated as OpenQASM 2.0 if it ends in `.qasm` or begins with an
 `OPENQASM` header (see programs/bell.qasm); otherwise the native format below.
