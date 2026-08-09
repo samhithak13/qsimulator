@@ -1,13 +1,20 @@
 #!/usr/bin/env python3
 """Cross-validate qsimulator against Qiskit over the OpenQASM 2.0 bridge.
 
-For each trial this generates a random circuit from the gate set both engines
-implement, emits it as OpenQASM 2.0, and runs it through:
+Two phases, each run for `--trials` random circuits:
 
-  * qsimulator, via its `--statevector` CLI (final amplitudes as JSON), and
-  * Qiskit's reference `Statevector`.
+  * **gates** — generate a random OpenQASM program from the gate set both
+    engines implement, and run it through qsimulator (via its `--statevector`
+    CLI, which prints the final amplitudes as JSON) and Qiskit's reference
+    `Statevector`. This checks that the two engines agree gate for gate.
 
-The two state vectors are compared up to global phase (fidelity), which is the
+  * **export** — generate a random program in qsimulator's native text format,
+    including multi-controlled gates that OpenQASM 2 has no way to write
+    directly. qsimulator runs it, while Qiskit runs the program as qsimulator
+    exports it (`--emit-qasm`), i.e. after decomposition. This checks that the
+    decomposition an export goes through means the same thing to another tool.
+
+State vectors are compared up to global phase (fidelity), which is the
 physically meaningful notion of state equality and is robust to per-gate
 global-phase conventions. A single mismatch prints the offending program and
 exits non-zero.
@@ -81,15 +88,58 @@ def random_qasm(n_qubits: int, n_gates: int, rng: random.Random) -> str:
     return "\n".join(lines) + "\n"
 
 
-def qsim_statevector(qasm: str, binary: str) -> np.ndarray:
+def random_program(n_qubits: int, n_gates: int, rng: random.Random) -> str:
+    """A random circuit in qsimulator's native text format.
+
+    Weighted towards the multi-controlled instructions, since these are the
+    ones whose OpenQASM form is a decomposition rather than a single gate; the
+    rest are there to hand them a thoroughly entangled input state.
+    """
+    lines = [f"qubits {n_qubits}"]
+    for _ in range(n_gates):
+        kind = rng.random()
+        if kind < 0.3:
+            g = rng.choice(ONE_QUBIT)
+            lines.append(f"{g} {rng.randrange(n_qubits)}")
+        elif kind < 0.45:
+            lines.append(
+                f"u3 {angle(rng)} {angle(rng)} {angle(rng)} {rng.randrange(n_qubits)}"
+            )
+        elif n_qubits >= 2 and kind < 0.55:
+            a, b = rng.sample(range(n_qubits), 2)
+            lines.append(f"{rng.choice(['cnot', 'cy', 'cz', 'ch', 'swap'])} {a} {b}")
+        elif n_qubits >= 2:
+            # A multi-controlled gate over a random subset of the register.
+            # One control shy of the full register exercises the borrowed-qubit
+            # decomposition; the full register exercises the square-root one.
+            width = rng.randint(2, n_qubits)
+            qubits = rng.sample(range(n_qubits), width)
+            operands = " ".join(str(q) for q in qubits)
+            if rng.random() < 0.5:
+                lines.append(f"mcx {operands}")
+            else:
+                # theta = 0 is a diagonal gate, which exports by a separate
+                # (phase-only) path, so hit it deliberately every so often.
+                theta = "0" if rng.random() < 0.3 else angle(rng)
+                lines.append(f"mcu3 {theta} {angle(rng)} {angle(rng)} {operands}")
+        else:
+            lines.append(f"x {rng.randrange(n_qubits)}")
+    return "\n".join(lines) + "\n"
+
+
+def qsim(args: list[str], program: str, binary: str) -> str:
     result = subprocess.run(
-        [binary, "--statevector", "-"],
-        input=qasm,
+        [binary, *args, "-"],
+        input=program,
         capture_output=True,
         text=True,
         check=True,
     )
-    data = json.loads(result.stdout)
+    return result.stdout
+
+
+def qsim_statevector(qasm: str, binary: str) -> np.ndarray:
+    data = json.loads(qsim(["--statevector"], qasm, binary))
     return np.array([complex(re, im) for re, im in data], dtype=complex)
 
 
@@ -114,9 +164,76 @@ def build_binary() -> str:
     return os.path.join(root, "target", "debug", "qsimulator")
 
 
+def compare(
+    label: str,
+    trial: int,
+    source: str,
+    a: np.ndarray,
+    b: np.ndarray,
+    tol: float,
+) -> float | None:
+    """Fidelity of the two state vectors, or None (after printing) on a
+    mismatch."""
+    if a.shape != b.shape:
+        print(f"FAIL ({label} trial {trial}): shape {a.shape} vs {b.shape}\n{source}")
+        return None
+    f = fidelity(a, b)
+    if 1.0 - f > tol:
+        print(f"FAIL ({label} trial {trial}): fidelity {f:.3e} below 1 - {tol:g}")
+        print(source)
+        return None
+    return f
+
+
+def run_gate_phase(args, binary: str, rng: random.Random) -> float | None:
+    """Both engines run the same OpenQASM program."""
+    worst = 1.0
+    for trial in range(args.trials):
+        n_qubits = rng.randint(1, args.max_qubits)
+        n_gates = rng.randint(2 * n_qubits, 6 * n_qubits)
+        qasm = random_qasm(n_qubits, n_gates, rng)
+
+        f = compare(
+            "gates",
+            trial,
+            qasm,
+            qsim_statevector(qasm, binary),
+            qiskit_statevector(qasm),
+            args.tol,
+        )
+        if f is None:
+            return None
+        worst = min(worst, f)
+    return worst
+
+
+def run_export_phase(args, binary: str, rng: random.Random) -> float | None:
+    """qsimulator runs a native program; Qiskit runs what qsimulator exports,
+    so any error in the export decomposition shows up as a mismatch."""
+    worst = 1.0
+    for trial in range(args.trials):
+        n_qubits = rng.randint(2, args.max_qubits)
+        n_gates = rng.randint(n_qubits, 3 * n_qubits)
+        program = random_program(n_qubits, n_gates, rng)
+        exported = qsim(["--emit-qasm"], program, binary)
+
+        f = compare(
+            "export",
+            trial,
+            f"{program}\n--- exported as ---\n{exported}",
+            qsim_statevector(program, binary),
+            qiskit_statevector(exported),
+            args.tol,
+        )
+        if f is None:
+            return None
+        worst = min(worst, f)
+    return worst
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--trials", type=int, default=500)
+    parser.add_argument("--trials", type=int, default=500, help="trials per phase")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--tol", type=float, default=1e-9)
     parser.add_argument("--max-qubits", type=int, default=5)
@@ -126,30 +243,14 @@ def main() -> int:
     binary = args.binary or build_binary()
     rng = random.Random(args.seed)
 
-    worst = 1.0
-    for trial in range(args.trials):
-        n_qubits = rng.randint(1, args.max_qubits)
-        n_gates = rng.randint(2 * n_qubits, 6 * n_qubits)
-        qasm = random_qasm(n_qubits, n_gates, rng)
-
-        a = qsim_statevector(qasm, binary)
-        b = qiskit_statevector(qasm)
-
-        if a.shape != b.shape:
-            print(f"FAIL (trial {trial}): shape {a.shape} vs {b.shape}\n{qasm}")
+    for label, phase in (("gates", run_gate_phase), ("export", run_export_phase)):
+        worst = phase(args, binary, rng)
+        if worst is None:
             return 1
-
-        f = fidelity(a, b)
-        worst = min(worst, f)
-        if 1.0 - f > args.tol:
-            print(f"FAIL (trial {trial}): fidelity {f:.3e} below 1 - {args.tol:g}")
-            print(qasm)
-            return 1
-
-    print(
-        f"OK: {args.trials} trials agree with Qiskit "
-        f"(worst fidelity {worst:.15f}, tol {args.tol:g})"
-    )
+        print(
+            f"OK: {args.trials} {label} trials agree with Qiskit "
+            f"(worst fidelity {worst:.15f}, tol {args.tol:g})"
+        )
     return 0
 
 

@@ -1,10 +1,17 @@
 # Cross-validation against Qiskit
 
 `compare.py` checks qsimulator against [Qiskit](https://www.ibm.com/quantum/qiskit)
-as an independent reference implementation. Each trial builds a random circuit
-from the gate set both engines share, emits it as OpenQASM 2.0, runs it through
-qsimulator (`--statevector`) and Qiskit's `Statevector`, and compares the two
-state vectors up to global phase.
+as an independent reference implementation. It runs two phases, each for
+`--trials` random circuits, comparing the two state vectors up to global phase:
+
+- **gates** — a random circuit from the gate set both engines share, emitted as
+  OpenQASM 2.0 and run through qsimulator (`--statevector`) and Qiskit's
+  `Statevector`. Checks that the engines agree gate for gate.
+- **export** — a random circuit in qsimulator's native text format, including
+  multi-controlled gates that OpenQASM 2 cannot write directly. qsimulator runs
+  the program; Qiskit runs it as qsimulator exports it (`--emit-qasm`), that is
+  after decomposition. Checks that a decomposed export still means the same
+  thing to another tool.
 
 ## Running
 
@@ -24,6 +31,12 @@ Over randomized circuits spanning the shared gate set — H, X, Y, Z, S, T and
 their daggers, `u1`/`u2`/`u3`, `rx`/`ry`/`rz`, `cx`, `cz`, `crz`, `cu1`,
 `swap`, `ccx` — qsimulator's amplitudes match Qiskit's to floating-point
 precision (state fidelity within `1e-9` of 1).
+
+The export phase additionally covers the gates with no OpenQASM 2 equivalent —
+multi-controlled X and multi-controlled U3 at every width up to the full
+register, including the diagonal (phase-only) case — so both decomposition
+paths, the borrowed-qubit ladder and the square-root recursion, are checked
+against an independent reading of the output.
 
 Comparison is done up to a global phase, via `|<a|b>|^2`. That is the
 physically meaningful notion of state equality and avoids spurious failures
