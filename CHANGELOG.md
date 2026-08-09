@@ -6,6 +6,13 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-09
+
+The OpenQASM bridge now works in both directions. 0.2.0 made every builder gate
+exportable; this release makes every gate Qiskit emits importable — `gate`
+declarations, the whole of `qelib1`, and the arithmetic angle expressions both
+of those need. Purely additive: nothing removed or changed in meaning.
+
 ### Added
 - The rest of `qelib1.inc` on import: `u`, `u0`, `sx`, `sxdg`, `crx`, `cry`,
   `csx`, `cu`, `rxx`, `rzz`, `rccx`, `rc3x`, `c3x`, `c3sqrtx`, `c4x`. Together
@@ -110,6 +117,7 @@ Initial release.
   macOS covering formatting, clippy (`-D warnings`), a warning-clean
   `cargo doc`, tests, examples, cross-validation, fuzzing, and `cargo audit`.
 
-[Unreleased]: https://github.com/samhithak13/qsimulator/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/samhithak13/qsimulator/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/samhithak13/qsimulator/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/samhithak13/qsimulator/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/samhithak13/qsimulator/releases/tag/v0.1.0

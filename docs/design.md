@@ -189,5 +189,35 @@ way to write it.
 
 ## Roadmap
 
-- A SIMD or blocked-complex-arithmetic fast path, if the memory-bound ceiling
-  ever needs raising.
+Nothing outstanding. The OpenQASM bridge is complete in both directions:
+every builder gate exports, and every gate Qiskit emits — including `gate`
+declarations and the whole of `qelib1` — imports.
+
+### Not planned: a SIMD fast path
+
+Earlier notes listed a SIMD or blocked-complex-arithmetic kernel "if the
+memory-bound ceiling ever needs raising". It does not, and the reason is
+arithmetic intensity rather than effort.
+
+Applying a 2x2 gate to one amplitude pair moves 64 bytes (two `Complex64`
+loaded, two stored) to do four complex multiplies and two complex adds — about
+28 flops, so roughly 0.4 flops per byte. That is one to two orders of magnitude
+below the flops-per-byte a core can sustain against DRAM, so the kernel waits
+on memory, not on the multiplier. Widening the arithmetic makes the part that
+was never the bottleneck faster.
+
+The `parallel` benchmarks corroborate it: eight cores buy 1.2x–2.4x, not 8x,
+and the best case is exactly the one that streams two large contiguous halves.
+That shape is bandwidth-limited scaling.
+
+There is also a cost. Portable SIMD (`std::simd`) is nightly-only, and stable
+SIMD means `core::arch` intrinsics, which are `unsafe` — so the fast path would
+trade away `#![forbid(unsafe_code)]`, a guarantee worth more than a few percent
+on a memory-bound loop. The kernels are already shaped for the compiler to
+auto-vectorize what it can: a bounds-check-free walk over `chunks_exact_mut`
+with the gate entries hoisted into locals.
+
+Should this ever be revisited, the profitable direction is reducing traffic
+rather than widening arithmetic — fusing adjacent single-qubit gates on the
+same target so one sweep does the work of several, or blocking several gates
+over a cache-resident slice of the vector.
