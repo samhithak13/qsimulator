@@ -743,18 +743,20 @@ fn emit_mcu(out: &mut String, n_qubits: usize, gate: &Gate, controls: &[usize], 
         out.push_str(&format!("u3({theta},{phi},{lambda}) q[{target}];\n"));
         return;
     }
-    if controls.len() == 1 {
-        emit_controlled_u(out, gate, controls[0], target);
-        return;
-    }
 
     // Diagonal gate: diag(e^{iγ}, e^{i(γ+λ)}). The first factor is a phase on
     // the controls alone, the second a phase on the controls and the target.
+    // Cheaper than the general path at every width, so it comes first.
     if theta.abs() < ANGLE_EPS {
         emit_mcphase(out, n_qubits, gamma, controls);
         let mut controls_and_target = controls.to_vec();
         controls_and_target.push(target);
         emit_mcphase(out, n_qubits, lambda, &controls_and_target);
+        return;
+    }
+
+    if controls.len() == 1 {
+        emit_controlled_u(out, gate, controls[0], target);
         return;
     }
 

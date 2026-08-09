@@ -252,6 +252,19 @@ fn multi_controlled_diagonal_exports_as_phases() {
     assert!(qasm.contains("cu1("), "{qasm}");
 }
 
+/// A single-control diagonal gate takes the phase path too, which is shorter
+/// than the general `cu3` form: a phase on the control (only when the gate has
+/// one, as `rz` does) plus a controlled phase.
+#[test]
+fn single_control_diagonal_exports_as_phases() {
+    let mut c = Circuit::new(2);
+    c.h(0).h(1).mcu(gates::rz(0.7), &[0], 1);
+    let qasm = assert_export_round_trips(&c);
+    assert!(qasm.contains("u1(-0.35) q[0];"), "{qasm}");
+    assert!(qasm.contains("cu1(0.7) q[0],q[1];"), "{qasm}");
+    assert!(!qasm.contains("cu3"), "{qasm}");
+}
+
 /// Degenerate control counts fall back to the plain gates.
 #[test]
 fn multi_controlled_with_zero_or_one_control() {
