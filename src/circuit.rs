@@ -10,8 +10,7 @@ use std::fmt;
 type Gate = [[Complex64; 2]; 2];
 
 /// Reason a circuit could not be exported to the OpenQASM 2.0 subset by
-/// [`Circuit::to_qasm`]. These are the gates with no direct OpenQASM 2
-/// equivalent.
+/// [`Circuit::to_qasm`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExportError {
     /// An arbitrary single-qubit gate with no OpenQASM name. Built-in gates
@@ -19,14 +18,6 @@ pub enum ExportError {
     SingleGate {
         /// The gate's diagram label.
         label: &'static str,
-    },
-    /// An arbitrary multi-controlled-U (from [`Circuit::mcu`]).
-    MultiControlledU,
-    /// A multi-controlled-X with a control count other than two; only the
-    /// two-control case (`ccx`) is representable.
-    MultiControlledX {
-        /// The number of controls that could not be expressed.
-        controls: usize,
     },
 }
 
@@ -36,13 +27,6 @@ impl fmt::Display for ExportError {
             ExportError::SingleGate { label } => {
                 write!(f, "cannot export single-qubit gate `{label}` to OpenQASM 2")
             }
-            ExportError::MultiControlledU => {
-                f.write_str("cannot export a multi-controlled-U (mcu) to OpenQASM 2")
-            }
-            ExportError::MultiControlledX { controls } => write!(
-                f,
-                "cannot export a multi-controlled-X with {controls} controls (only 2 = ccx)"
-            ),
         }
     }
 }
@@ -470,14 +454,18 @@ impl Circuit {
     /// Emits the standard header, a single `qreg q[n]`, and one gate per line.
     /// The output round-trips through [`qasm::parse`](crate::qasm::parse):
     /// re-importing it yields an equivalent circuit. Angles are written at full
-    /// `f64` precision so the round trip is exact. An arbitrary controlled-U
-    /// ([`cu`](Circuit::cu)) is decomposed into a control phase (`u1`) and a
-    /// `cu3`.
+    /// `f64` precision so the round trip is exact.
     ///
-    /// Returns an error only for gates the OpenQASM 2 subset cannot express: a
-    /// multi-controlled-U ([`mcu`](Circuit::mcu)), or a multi-controlled-X with
-    /// a control count other than two (only [`toffoli`](Circuit::toffoli)/`ccx`
-    /// is representable).
+    /// Gates without a direct OpenQASM 2 equivalent are decomposed into ones
+    /// that have one: an arbitrary controlled-U ([`cu`](Circuit::cu)) into a
+    /// control phase (`u1`) plus a `cu3`, and a multi-controlled gate
+    /// ([`mcx`](Circuit::mcx), [`mcu`](Circuit::mcu)) into Toffolis and
+    /// single-qubit rotations. Only an unconditional [`mcu`](Circuit::mcu) —
+    /// one with no controls at all — loses anything: its global phase, which
+    /// OpenQASM 2 cannot express and no measurement can observe.
+    ///
+    /// Every built-in gate exports, so the error case is unreachable for
+    /// circuits built through this API.
     ///
     /// # Example
     ///
@@ -546,38 +534,23 @@ impl Circuit {
                         // Any other controlled single-qubit unitary (e.g. `cu`
                         // with an arbitrary matrix): decompose into a phase on
                         // the control followed by a controlled-U3.
-                        _ => {
-                            let (gamma, theta, phi, lambda) = gates::u3_decompose(gate);
-                            if gamma.abs() > 1e-12 {
-                                out.push_str(&format!("u1({gamma}) q[{control}];\n"));
-                            }
-                            out.push_str(&format!(
-                                "cu3({theta},{phi},{lambda}) q[{control}],q[{target}];\n"
-                            ));
-                        }
+                        _ => emit_controlled_u(&mut out, gate, *control, *target),
                     }
                 }
                 Op::Swap { a, b } => {
                     out.push_str(&format!("swap q[{a}],q[{b}];\n"));
                 }
                 Op::MultiControlled {
+                    gate,
                     controls,
                     target,
                     label,
-                    ..
                 } => {
-                    if *label != "X" {
-                        return Err(ExportError::MultiControlledU);
+                    if *label == "X" {
+                        emit_mcx(&mut out, self.n_qubits, controls, *target);
+                    } else {
+                        emit_mcu(&mut out, self.n_qubits, gate, controls, *target);
                     }
-                    if controls.len() != 2 {
-                        return Err(ExportError::MultiControlledX {
-                            controls: controls.len(),
-                        });
-                    }
-                    out.push_str(&format!(
-                        "ccx q[{}],q[{}],q[{target}];\n",
-                        controls[0], controls[1]
-                    ));
                 }
             }
         }
@@ -672,6 +645,160 @@ impl Circuit {
             lines.push(line);
         }
         lines.join("\n")
+    }
+}
+
+/// Angles smaller than this are treated as zero, and their gate is left out of
+/// the exported program.
+const ANGLE_EPS: f64 = 1e-12;
+
+/// Emit `name(angle) q[target];`, unless `angle` is negligible.
+fn emit_rotation(out: &mut String, name: &str, angle: f64, target: usize) {
+    if angle.abs() > ANGLE_EPS {
+        out.push_str(&format!("{name}({angle}) q[{target}];\n"));
+    }
+}
+
+/// Emit a controlled arbitrary 2x2 unitary as a phase on the control followed
+/// by a `cu3`, using the Euler decomposition `gate == e^{iγ}·u3(θ, φ, λ)`.
+fn emit_controlled_u(out: &mut String, gate: &Gate, control: usize, target: usize) {
+    let (gamma, theta, phi, lambda) = gates::u3_decompose(gate);
+    emit_rotation(out, "u1", gamma, control);
+    out.push_str(&format!(
+        "cu3({theta},{phi},{lambda}) q[{control}],q[{target}];\n"
+    ));
+}
+
+/// The lowest-numbered qubit of the register that an operation on
+/// `controls`/`target` leaves untouched, if any.
+fn free_qubit(n_qubits: usize, controls: &[usize], target: usize) -> Option<usize> {
+    (0..n_qubits).find(|q| *q != target && !controls.contains(q))
+}
+
+/// Emit a multi-controlled X (`target ^= AND(controls)`) as OpenQASM 2 gates.
+///
+/// Up to two controls this is `x`/`cx`/`ccx` directly. Beyond that it is a
+/// Barenco-style decomposition into Toffolis, in one of two ways:
+///
+/// - **With a spare qubit** — any register qubit the operation does not touch
+///   can be *borrowed* even though its state is unknown ("dirty"). The
+///   controls are split into two halves; the borrowed qubit is toggled by the
+///   first half and used as an extra control for the second, and the whole
+///   pair is run twice so the qubit's unknown initial value cancels out of the
+///   target and the qubit itself is left as it was found. Each half is a
+///   strictly smaller multi-controlled X, so this recurses to Toffolis in
+///   `O(controls²)` gates.
+/// - **With no spare qubit** (the controls plus the target are the whole
+///   register) — the square-root recursion, with `V·V = X`:
+///   `C^m(X) = C(V)[c_m,t] · C^{m-1}(X)[c_<m→c_m] · C(V†)[c_m,t] ·
+///   C^{m-1}(X)[c_<m→c_m] · C^{m-1}(V)[c_<m→t]`. Every inner operation leaves
+///   a qubit untouched, so the recursion lands in the borrowed-qubit case.
+fn emit_mcx(out: &mut String, n_qubits: usize, controls: &[usize], target: usize) {
+    match controls {
+        [] => out.push_str(&format!("x q[{target}];\n")),
+        [c] => out.push_str(&format!("cx q[{c}],q[{target}];\n")),
+        [a, b] => out.push_str(&format!("ccx q[{a}],q[{b}],q[{target}];\n")),
+        _ => match free_qubit(n_qubits, controls, target) {
+            Some(borrowed) => {
+                // Both halves are shorter than `controls` (the split point is
+                // between 2 and controls.len() - 1), so this terminates.
+                let (lo, hi) = controls.split_at(controls.len().div_ceil(2));
+                let mut hi_borrowed = hi.to_vec();
+                hi_borrowed.push(borrowed);
+                for _ in 0..2 {
+                    emit_mcx(out, n_qubits, lo, borrowed);
+                    emit_mcx(out, n_qubits, &hi_borrowed, target);
+                }
+            }
+            None => {
+                let (&last, rest) = controls.split_last().expect("at least three controls");
+                emit_controlled_u(out, &gates::sqrt_x(), last, target);
+                emit_mcx(out, n_qubits, rest, last);
+                emit_controlled_u(out, &gates::sqrt_x_dg(), last, target);
+                emit_mcx(out, n_qubits, rest, last);
+                emit_mcu(out, n_qubits, &gates::sqrt_x(), rest, target);
+            }
+        },
+    }
+}
+
+/// Emit a multi-controlled arbitrary 2x2 unitary as OpenQASM 2 gates.
+///
+/// Writes `gate` as `e^{iγ''}·A·X·B·X·C` with `A·B·C = I`, where `A`, `B` and
+/// `C` are products of `rz`/`ry` built from the Euler angles of
+/// `gates::u3_decompose`. Conditioning only the two `X`s (on the full control
+/// set, via [`emit_mcx`]) and the phase `γ''` (via [`emit_mcphase`]) then gives
+/// the controlled gate: when the controls are not all set, `A·B·C` collapses to
+/// the identity and no phase is applied.
+///
+/// A diagonal `gate` — a multi-controlled Z, S, T or phase — skips the `X`s
+/// entirely and exports as two phase terms.
+///
+/// With no controls the gate is unconditional, so its global phase is
+/// unobservable and is dropped (OpenQASM 2 cannot express one).
+fn emit_mcu(out: &mut String, n_qubits: usize, gate: &Gate, controls: &[usize], target: usize) {
+    let (gamma, theta, phi, lambda) = gates::u3_decompose(gate);
+
+    if controls.is_empty() {
+        out.push_str(&format!("u3({theta},{phi},{lambda}) q[{target}];\n"));
+        return;
+    }
+    if controls.len() == 1 {
+        emit_controlled_u(out, gate, controls[0], target);
+        return;
+    }
+
+    // Diagonal gate: diag(e^{iγ}, e^{i(γ+λ)}). The first factor is a phase on
+    // the controls alone, the second a phase on the controls and the target.
+    if theta.abs() < ANGLE_EPS {
+        emit_mcphase(out, n_qubits, gamma, controls);
+        let mut controls_and_target = controls.to_vec();
+        controls_and_target.push(target);
+        emit_mcphase(out, n_qubits, lambda, &controls_and_target);
+        return;
+    }
+
+    // C = Rz((λ-φ)/2), B = Ry(-θ/2)·Rz(-(λ+φ)/2), A = Rz(φ)·Ry(θ/2). Then
+    // A·B·C = I and A·X·B·X·C = Rz(φ)·Ry(θ)·Rz(λ), which is u3(θ,φ,λ) up to
+    // the phase e^{i(φ+λ)/2} — folded into γ'' below. Gates are emitted in
+    // time order, so each matrix product is written back to front.
+    emit_rotation(out, "rz", (lambda - phi) / 2.0, target);
+    emit_mcx(out, n_qubits, controls, target);
+    emit_rotation(out, "rz", -(lambda + phi) / 2.0, target);
+    emit_rotation(out, "ry", -theta / 2.0, target);
+    emit_mcx(out, n_qubits, controls, target);
+    emit_rotation(out, "ry", theta / 2.0, target);
+    emit_rotation(out, "rz", phi, target);
+    emit_mcphase(out, n_qubits, gamma + (phi + lambda) / 2.0, controls);
+}
+
+/// Emit a phase of `e^{i·lambda}` applied only when every qubit in `qubits` is
+/// |1>, as OpenQASM 2 gates.
+///
+/// One qubit is `u1` and two are `cu1`. Beyond that it uses the same identity
+/// that decomposes `cu1` — half the phase on the leading qubits, then the
+/// remaining qubit conjugated by a multi-controlled X — which peels off one
+/// qubit per step. Since a phase is diagonal, the emitted gates commute and the
+/// order among them does not matter.
+fn emit_mcphase(out: &mut String, n_qubits: usize, lambda: f64, qubits: &[usize]) {
+    if lambda.abs() < ANGLE_EPS {
+        return;
+    }
+    match qubits {
+        // A global phase, which OpenQASM 2 cannot express and no measurement
+        // can see.
+        [] => {}
+        [q] => out.push_str(&format!("u1({lambda}) q[{q}];\n")),
+        [a, b] => out.push_str(&format!("cu1({lambda}) q[{a}],q[{b}];\n")),
+        _ => {
+            let (&last, rest) = qubits.split_last().expect("at least three qubits");
+            let half = lambda / 2.0;
+            emit_mcphase(out, n_qubits, half, rest);
+            emit_mcx(out, n_qubits, rest, last);
+            emit_rotation(out, "u1", -half, last);
+            emit_mcx(out, n_qubits, rest, last);
+            emit_rotation(out, "u1", half, last);
+        }
     }
 }
 

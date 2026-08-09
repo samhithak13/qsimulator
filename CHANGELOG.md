@@ -23,8 +23,14 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   kernels (~1.2x on an Apple M1), via a shared `apply_masked` routine.
 - `Circuit::to_qasm` now exports an arbitrary controlled-U (`cu`) by
   decomposing it into a control phase (`u1`) and a `cu3`, instead of returning
-  an error. `ExportError::ControlledU` is removed; only `mcu` and a
-  multi-controlled-X with a control count other than two still error.
+  an error. `ExportError::ControlledU` is removed.
+- `Circuit::to_qasm` now also exports multi-controlled gates (`mcx`, `mcu`) at
+  any width, via a Barenco-style decomposition into Toffolis and single-qubit
+  rotations: a borrowed-qubit Toffoli ladder when the register has a spare
+  qubit, and the square-root recursion when it does not. Every built-in gate
+  now round-trips through OpenQASM, so `ExportError::MultiControlledU` and
+  `ExportError::MultiControlledX` are removed and `ExportError::SingleGate` is
+  unreachable through the builder API.
 
 ## [0.1.0] - 2026-08-06
 

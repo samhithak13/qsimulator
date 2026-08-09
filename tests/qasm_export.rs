@@ -157,19 +157,130 @@ fn cu3_exports_and_round_trips() {
     assert_same_probs(&reimported.run(), &c.run());
 }
 
-#[test]
-fn error_exporting_multi_controlled_u() {
-    let mut c = Circuit::new(3);
-    c.mcu(gates::z(), &[0, 1], 2);
-    assert_eq!(c.to_qasm().unwrap_err(), ExportError::MultiControlledU);
+/// Spread the register over every basis state with distinct, unequal
+/// amplitudes, so a decomposition that is only *nearly* right shows up.
+fn scramble(c: &mut Circuit, n_qubits: usize) {
+    for q in 0..n_qubits {
+        let k = q as f64;
+        c.u3(0.7 + 0.3 * k, 0.4 - 0.2 * k, 1.1 + 0.5 * k, q);
+    }
 }
 
+/// Assert two states are equal amplitude by amplitude — a stricter check than
+/// [`assert_same_probs`], since a multi-controlled decomposition has to
+/// reproduce the relative phases it conditions on, not just the populations.
+fn assert_same_amplitudes(a: &State, b: &State) {
+    assert_eq!(a.n_qubits(), b.n_qubits());
+    for (i, (x, y)) in a.amplitudes().iter().zip(b.amplitudes()).enumerate() {
+        assert!(
+            (x - y).norm() < 1e-12,
+            "amplitude {i} differs: {x} vs {y}\n{a:?}\n{b:?}"
+        );
+    }
+}
+
+/// Export a circuit, re-import it, and assert the two agree exactly.
+fn assert_export_round_trips(c: &Circuit) -> String {
+    let qasm = c.to_qasm().expect("should export");
+    let reimported = qasm::parse(&qasm).expect("should re-import");
+    assert_same_amplitudes(&reimported.run(), &c.run());
+    qasm
+}
+
+/// A multi-controlled X round-trips for every control count, both when the
+/// register has a qubit to borrow (the Toffoli-ladder decomposition) and when
+/// the controls plus the target are the whole register (the square-root
+/// recursion).
 #[test]
-fn error_exporting_three_control_mcx() {
-    let mut c = Circuit::new(4);
-    c.mcx(&[0, 1, 2], 3); // C3X has no direct OpenQASM 2 gate
+fn multi_controlled_x_round_trips_at_every_width() {
+    for controls in 0..=5usize {
+        for spare in 0..=1usize {
+            let n = controls + 1 + spare;
+            let mut c = Circuit::new(n);
+            scramble(&mut c, n);
+            c.mcx(&(0..controls).collect::<Vec<_>>(), controls);
+            assert_export_round_trips(&c);
+        }
+    }
+}
+
+/// With a qubit to borrow, a wide multi-controlled X decomposes into Toffolis
+/// alone — no square roots, so no `cu3` in the output.
+#[test]
+fn multi_controlled_x_with_a_spare_qubit_is_all_toffolis() {
+    let mut c = Circuit::new(6);
+    c.mcx(&[0, 1, 2, 3], 4); // q5 is free to borrow
+    let qasm = assert_export_round_trips(&c);
+    assert!(!qasm.contains("cu3"), "{qasm}");
+    assert!(qasm.contains("ccx"), "{qasm}");
+}
+
+/// The borrowed qubit must be returned in the state it was found in, whatever
+/// that state is — including entangled with the rest of the register.
+#[test]
+fn borrowed_qubit_is_restored() {
+    let mut c = Circuit::new(6);
+    scramble(&mut c, 6);
+    c.cnot(0, 5).h(5).cnot(5, 1); // entangle the qubit that will be borrowed
+    c.mcx(&[0, 1, 2, 3], 4);
+    assert_export_round_trips(&c);
+}
+
+/// An arbitrary multi-controlled unitary round-trips, with and without a spare
+/// qubit.
+#[test]
+fn multi_controlled_u_round_trips() {
+    for n in [4usize, 5] {
+        let mut c = Circuit::new(n);
+        scramble(&mut c, n);
+        c.mcu(gates::h(), &[0, 1, 2], 3);
+        c.mcu(gates::u3(0.6, -1.2, 0.3), &[1, 2, 3], 0);
+        assert_export_round_trips(&c);
+    }
+}
+
+/// A diagonal multi-controlled gate (here a CCZ and a three-control T) is pure
+/// phase, so as long as its inner Toffolis have a qubit to borrow it exports
+/// without any Y rotation.
+#[test]
+fn multi_controlled_diagonal_exports_as_phases() {
+    let mut c = Circuit::new(5);
+    scramble(&mut c, 5);
+    c.mcu(gates::z(), &[0, 1], 2).mcu(gates::t(), &[0, 1, 2], 3);
+    let qasm = assert_export_round_trips(&c);
+    assert!(!qasm.contains("ry("), "{qasm}");
+    assert!(qasm.contains("cu1("), "{qasm}");
+}
+
+/// Degenerate control counts fall back to the plain gates.
+#[test]
+fn multi_controlled_with_zero_or_one_control() {
+    let mut c = Circuit::new(2);
+    c.h(0).mcx(&[], 1).mcx(&[0], 1).mcu(gates::h(), &[0], 1);
+    let qasm = assert_export_round_trips(&c);
+    assert!(qasm.contains("x q[1];"), "{qasm}");
+    assert!(qasm.contains("cx q[0],q[1];"), "{qasm}");
+}
+
+/// An `mcu` with no controls is unconditional, so its global phase is dropped:
+/// the re-imported circuit matches up to that phase, i.e. in probabilities.
+#[test]
+fn uncontrolled_mcu_round_trips_up_to_global_phase() {
+    let mut c = Circuit::new(2);
+    c.h(0).mcu(gates::t(), &[], 0);
+
+    let qasm = c.to_qasm().expect("should export");
+    let reimported = qasm::parse(&qasm).expect("should re-import");
+    assert_same_probs(&reimported.run(), &c.run());
+}
+
+/// The only remaining export failure: an `Op` label with no OpenQASM name.
+/// Unreachable through the builder API, so this checks the message instead.
+#[test]
+fn single_gate_export_error_reads_well() {
+    let e = ExportError::SingleGate { label: "W" };
     assert_eq!(
-        c.to_qasm().unwrap_err(),
-        ExportError::MultiControlledX { controls: 3 }
+        e.to_string(),
+        "cannot export single-qubit gate `W` to OpenQASM 2"
     );
 }

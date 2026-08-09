@@ -153,9 +153,39 @@ decomposes it into a control phase (`u1`) plus `cu3` via a single-qubit Euler
 decomposition (`gates::u3_decompose`, which writes any 2×2 unitary as
 `e^{iγ}·u3(θ,φ,λ)`). The `cu3` convention is cross-validated against Qiskit.
 
+### Multi-controlled export
+
+OpenQASM 2 stops at `ccx`, so wider multi-controlled gates are decomposed
+(`emit_mcx`, `emit_mcu`, `emit_mcphase` in `circuit.rs`). No ancillas are ever
+allocated — the register is exactly what the user declared.
+
+`C^m(X)` uses one of two Barenco constructions, chosen by whether the register
+has a qubit the operation does not touch:
+
+- **A spare qubit exists** — it is *borrowed*: its state is unknown, so the
+  controls are split in half, the borrowed qubit is toggled by the first half
+  and used as an extra control for the second, and the pair is run twice. The
+  unknown initial value cancels out of the target and the borrowed qubit is
+  left exactly as it was found (the gates are permutations, so this holds on
+  superpositions too). Each half recurses, giving `O(m²)` Toffolis.
+- **The controls plus the target are the whole register** — the square-root
+  recursion, with `V·V = X`: `C^m(X) = C(V)·C^{m-1}(X)·C(V†)·C^{m-1}(X)·
+  C^{m-1}(V)`. Every inner operation now leaves a qubit untouched, so it lands
+  in the borrowed-qubit case.
+
+`C^m(U)` writes `U` as `e^{iγ''}·A·X·B·X·C` with `A·B·C = I` (`A`, `B`, `C`
+being `rz`/`ry` products of the Euler angles). Only the two `X`s and the phase
+`γ''` are conditioned on the controls: off the all-controls-set subspace,
+`A·B·C` collapses to the identity. A diagonal `U` (multi-controlled Z, S, T,
+phase) skips the `X`s and exports as two phase terms. Multi-controlled phases
+recurse through the same identity that decomposes `cu1`.
+
+The decomposition is exact, not up-to-global-phase: `tests/qasm_export.rs`
+compares re-imported amplitudes elementwise. The single exception is an `mcu`
+with *no* controls, where the phase is genuinely global and OpenQASM 2 has no
+way to write it.
+
 ## Roadmap
 
-- A multi-controlled-U export path (Barenco-style decomposition) so `mcu` and
-  wide `mcx` also round-trip.
 - A SIMD or blocked-complex-arithmetic fast path, if the memory-bound ceiling
   ever needs raising.

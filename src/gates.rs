@@ -127,6 +127,20 @@ pub(crate) fn u3_decompose(g: &Gate) -> (f64, f64, f64, f64) {
     }
 }
 
+/// The square root of X: `sqrt_x() · sqrt_x() == x()`.
+///
+/// Used by OpenQASM export as the `V` of the Barenco square-root recursion,
+/// which is how a multi-controlled X is decomposed when the register has no
+/// spare qubit to borrow.
+pub(crate) fn sqrt_x() -> Gate {
+    [[c(0.5, 0.5), c(0.5, -0.5)], [c(0.5, -0.5), c(0.5, 0.5)]]
+}
+
+/// The inverse of [`sqrt_x`]: `sqrt_x_dg() · sqrt_x() == I`.
+pub(crate) fn sqrt_x_dg() -> Gate {
+    [[c(0.5, -0.5), c(0.5, 0.5)], [c(0.5, 0.5), c(0.5, -0.5)]]
+}
+
 /// Rotation about the X axis by angle `theta`:
 /// `[[cos(θ/2), -i·sin(θ/2)], [-i·sin(θ/2), cos(θ/2)]]`.
 ///
@@ -284,6 +298,13 @@ mod tests {
             let (gamma, theta, phi, lambda) = u3_decompose(&g);
             assert_gate_eq(&recompose(gamma, theta, phi, lambda), &g);
         }
+    }
+
+    #[test]
+    fn sqrt_x_squares_to_x_and_inverts() {
+        let id = [[c(1.0, 0.0), c(0.0, 0.0)], [c(0.0, 0.0), c(1.0, 0.0)]];
+        assert_gate_eq(&mul(&sqrt_x(), &sqrt_x()), &x());
+        assert_gate_eq(&mul(&sqrt_x_dg(), &sqrt_x()), &id);
     }
 
     #[test]
