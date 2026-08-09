@@ -1,7 +1,7 @@
 # qsimulator
 
 [![CI](https://github.com/samhithak13/qsimulator/actions/workflows/ci.yml/badge.svg)](https://github.com/samhithak13/qsimulator/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/samhithak13/qsimulator/blob/main/LICENSE)
 
 A noiseless quantum circuit simulator in Rust. It holds the full `2^n` state
 vector of an *n*-qubit register, applies unitary gates, measures in the
@@ -32,7 +32,7 @@ cargo run -- programs/bell.qasm   # OpenQASM 2.0
 cargo run -- --help               # program format and options
 ```
 
-Worked examples live in [`examples/`](examples) and each verify their own
+Worked examples live in [`examples/`](https://github.com/samhithak13/qsimulator/tree/main/examples) and each verify their own
 output:
 
 ```bash
@@ -72,12 +72,12 @@ value:
   00 or 11, measuring one half of a pair fixes the other, and the same seed
   reproduces the same histogram.
 
-Beyond the in-tree tests, [`crossval/`](crossval) checks qsimulator against
+Beyond the in-tree tests, [`crossval/`](https://github.com/samhithak13/qsimulator/tree/main/crossval) checks qsimulator against
 Qiskit: it runs hundreds of random circuits over the shared gate set through
 both engines (via OpenQASM) and confirms the state vectors match to
-floating-point precision. See [crossval/README.md](crossval/README.md).
+floating-point precision. See [crossval/README.md](https://github.com/samhithak13/qsimulator/blob/main/crossval/README.md).
 
-The parsers are fuzzed with [`cargo fuzz`](fuzz) (targets under `fuzz/`), with
+The parsers are fuzzed with [`cargo fuzz`](https://github.com/samhithak13/qsimulator/tree/main/fuzz) (targets under `fuzz/`), with
 a stable-toolchain random-input smoke test in `tests/robustness.rs` for
 continuous coverage.
 
@@ -93,7 +93,7 @@ the parsers, audits dependencies with `cargo audit`, and gates line coverage
 `cargo bench` measures gate-application throughput (the simulator's inner
 loop). The harness and a note on the kernel's structure — a bounds-check-free
 walk over the target bit's `|0>`/`|1>` halves — are in
-[benches/README.md](benches/README.md). Numbers are machine-dependent, so
+[benches/README.md](https://github.com/samhithak13/qsimulator/blob/main/benches/README.md). Numbers are machine-dependent, so
 regenerate them on the target machine rather than trusting a checked-in figure.
 
 An optional `parallel` feature runs the single-qubit kernel across threads
@@ -194,14 +194,14 @@ Planned:
 
 - `cu3` import and export, to round-trip arbitrary controlled-U gates.
 
-Design notes and a detailed status table live in [docs/design.md](docs/design.md).
+Design notes and a detailed status table live in [docs/design.md](https://github.com/samhithak13/qsimulator/blob/main/docs/design.md).
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). In short: keep new gates and primitives
+See [CONTRIBUTING.md](https://github.com/samhithak13/qsimulator/blob/main/CONTRIBUTING.md). In short: keep new gates and primitives
 covered by tests, and run `cargo fmt` and `cargo clippy` before opening a pull
 request.
 
 ## License
 
-[MIT](./LICENSE).
+[MIT](https://github.com/samhithak13/qsimulator/blob/main/LICENSE).
