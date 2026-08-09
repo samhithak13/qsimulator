@@ -85,18 +85,20 @@ Implemented and covered by tests:
 - **State vector** (`State`) — construction, amplitudes, per-index
   probability, norm; single-, controlled-, and multi-controlled gate
   application; qubit swap.
-- **Gates** (`gates`) — X, Y, Z, H, S, T, S†, T†, phase `p(λ)`, `u2`, `u3`,
-  and `rx`/`ry`/`rz`.
+- **Gates** (`gates`) — the identity, X, Y, Z, H, S, T, S†, T†, phase `p(λ)`,
+  `u2`, `u3`, and `rx`/`ry`/`rz`.
 - **Measurement** — `prob_qubit_one`, `measure_qubit`, `measure_all`, and
   `Circuit::sample`, backed by the seedable `rng::Rng`.
 - **Circuit** (`circuit::Circuit`) — builder methods for the full gate set,
   including `cnot`, `cz`, `crz`, `cp`, `cu3`, `swap`, `toffoli`, and the
-  general `cu`/`mcx`/`mcu`; execution; ASCII diagrams; OpenQASM export.
+  general `cu`/`mcx`/`mcu`; execution; ASCII diagrams; OpenQASM export at any
+  control width.
 - **Front ends** — a text program parser (`program`), an OpenQASM 2.0
   importer (`qasm`), and a CLI (`main`).
 
-Over 100 unit and integration tests; CI runs fmt, clippy (`-D warnings`),
-build, and test.
+Over 150 unit and integration tests at ~98% line coverage; CI runs fmt,
+clippy (`-D warnings`), a warning-clean `cargo doc`, build, test, the Qiskit
+cross-validation, parser fuzzing, `cargo audit`, and a coverage floor.
 
 ## Module layout
 
