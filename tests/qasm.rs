@@ -286,3 +286,30 @@ fn bundled_bell_qasm_matches_builder() {
     expected.h(0).cnot(0, 1);
     assert_same_probs(&imported, &expected.run());
 }
+
+/// Regression: a `gate` body's `{ ... }` holds its own semicolons and ends
+/// without one, so splitting statements naively on `;` glued the closing brace
+/// onto the next statement. Since `gate` blocks conventionally come *before*
+/// `qreg` — that is how Qiskit emits them — the register declaration was
+/// swallowed and the parser blamed a missing `qreg` instead of the real cause.
+#[test]
+fn gate_block_before_qreg_reports_the_real_cause() {
+    let src = "OPENQASM 2.0;\ngate g a { h a; }\nqreg q[1];\nh q[0];\n";
+    let err = qasm::parse(src).unwrap_err().to_string();
+    assert!(err.contains("unsupported OpenQASM feature `gate`"), "{err}");
+    assert!(!err.contains("no `qreg`"), "{err}");
+}
+
+/// Unbalanced braces are reported as such, not as some downstream confusion.
+#[test]
+fn unbalanced_braces_are_reported() {
+    let open = qasm::parse("OPENQASM 2.0;\ngate g a { h a;\nqreg q[1];\n")
+        .unwrap_err()
+        .to_string();
+    assert!(open.contains("unterminated `{`"), "{open}");
+
+    let close = qasm::parse("OPENQASM 2.0;\nqreg q[1];\n}\n")
+        .unwrap_err()
+        .to_string();
+    assert!(close.contains("unexpected `}`"), "{close}");
+}

@@ -43,11 +43,7 @@ pub fn parse(src: &str) -> Result<Circuit, ParseError> {
 
 fn parse_inner(src: &str) -> Result<Circuit, String> {
     let clean = strip_comments(src);
-    let statements: Vec<&str> = clean
-        .split(';')
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .collect();
+    let statements = split_statements(&clean)?;
 
     // Pass 1: collect quantum registers and assign flat index offsets.
     let mut regs: HashMap<String, Reg> = HashMap::new();
@@ -93,6 +89,48 @@ fn parse_inner(src: &str) -> Result<Circuit, String> {
         }
     }
     Ok(circuit)
+}
+
+/// Split a program into statements.
+///
+/// A statement normally ends at `;`, but a `gate` declaration's `{ ... }` body
+/// holds semicolons of its own and ends at the closing brace with no `;` after
+/// it. Splitting naively on `;` therefore glues that trailing `}` onto whatever
+/// follows — and since `gate` blocks conventionally precede `qreg`, the register
+/// declaration would vanish into a fragment starting with `}`.
+fn split_statements(src: &str) -> Result<Vec<&str>, String> {
+    let mut statements = Vec::new();
+    let mut depth = 0usize;
+    let mut start = 0usize;
+    for (i, c) in src.char_indices() {
+        match c {
+            '{' => depth += 1,
+            '}' => {
+                depth = depth
+                    .checked_sub(1)
+                    .ok_or_else(|| "unexpected `}`".to_string())?;
+                // The brace closes the statement it belongs to.
+                if depth == 0 {
+                    statements.push(&src[start..=i]);
+                    start = i + c.len_utf8();
+                }
+            }
+            ';' if depth == 0 => {
+                statements.push(&src[start..i]);
+                start = i + c.len_utf8();
+            }
+            _ => {}
+        }
+    }
+    if depth != 0 {
+        return Err("unterminated `{` (missing `}`)".to_string());
+    }
+    statements.push(&src[start..]);
+    Ok(statements
+        .into_iter()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .collect())
 }
 
 /// A quantum register's placement in the flat qubit index space.

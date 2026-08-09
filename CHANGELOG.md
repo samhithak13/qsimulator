@@ -6,6 +6,13 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- OpenQASM import split statements on `;`, which glued a `gate` body's closing
+  `}` onto the statement after it. Since `gate` blocks conventionally precede
+  `qreg` — as Qiskit emits them — the register declaration was swallowed and
+  the error read `no \`qreg\` declared` for a file that plainly had one. The
+  splitter is now brace-aware, and unbalanced braces are reported as such.
+
 ## [0.2.0] - 2026-08-09
 
 Every gate in the builder now round-trips through OpenQASM 2.0, which was the
