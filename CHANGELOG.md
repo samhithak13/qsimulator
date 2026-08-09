@@ -7,6 +7,15 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- The rest of `qelib1.inc` on import: `u`, `u0`, `sx`, `sxdg`, `crx`, `cry`,
+  `csx`, `cu`, `rxx`, `rzz`, `rccx`, `rc3x`, `c3x`, `c3sqrtx`, `c4x`. Together
+  with `gate` declarations this means a file Qiskit exports imports and agrees
+  with it. Thirteen match Qiskit's unitary exactly; `rxx` and `rzz` follow
+  qelib1's own decomposition and differ from Qiskit's gate object by a global
+  phase of `theta/2`, which is unobservable and inexpressible in OpenQASM 2.
+- `sx` and `sxdg` gates (`Circuit::sx`/`sxdg`, `gates::sx`/`sxdg`), with the
+  `sx`/`sxdg` program instructions and OpenQASM import and export. The matrix
+  already existed internally as the `V` of the multi-controlled decomposition.
 - OpenQASM `gate name(params) qargs { ... }` declarations are now imported,
   expanded at each call site with the actual angles and qubits substituted in.
   Bodies may call other declarations and use expressions over the formal

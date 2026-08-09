@@ -128,6 +128,28 @@ impl Circuit {
         self
     }
 
+    /// Square root of X on `target` (OpenQASM `sx`): `sx` twice is X.
+    pub fn sx(&mut self, target: usize) -> &mut Self {
+        self.ops.push(Op::Single {
+            gate: gates::sx(),
+            target,
+            label: "SX",
+            params: Vec::new(),
+        });
+        self
+    }
+
+    /// Inverse square root of X on `target` (OpenQASM `sxdg`).
+    pub fn sxdg(&mut self, target: usize) -> &mut Self {
+        self.ops.push(Op::Single {
+            gate: gates::sxdg(),
+            target,
+            label: "SXDG",
+            params: Vec::new(),
+        });
+        self
+    }
+
     /// Pauli-Y gate on `target`.
     pub fn y(&mut self, target: usize) -> &mut Self {
         self.ops.push(Op::Single {
@@ -510,6 +532,8 @@ impl Circuit {
                         "S" => "s",
                         "T" => "t",
                         "SDG" => "sdg",
+                        "SX" => "sx",
+                        "SXDG" => "sxdg",
                         "TDG" => "tdg",
                         "P" => "u1",
                         "U2" => "u2",
@@ -725,11 +749,11 @@ fn emit_mcx(out: &mut String, n_qubits: usize, controls: &[usize], target: usize
             }
             None => {
                 let (&last, rest) = controls.split_last().expect("at least three controls");
-                emit_controlled_u(out, &gates::sqrt_x(), last, target);
+                emit_controlled_u(out, &gates::sx(), last, target);
                 emit_mcx(out, n_qubits, rest, last);
-                emit_controlled_u(out, &gates::sqrt_x_dg(), last, target);
+                emit_controlled_u(out, &gates::sxdg(), last, target);
                 emit_mcx(out, n_qubits, rest, last);
-                emit_mcu(out, n_qubits, &gates::sqrt_x(), rest, target);
+                emit_mcu(out, n_qubits, &gates::sx(), rest, target);
             }
         },
     }

@@ -206,10 +206,12 @@ qreg q[1]; /* inline */ x q[0]; // trailing
 
 #[test]
 fn error_unsupported_gate() {
-    let err = qasm::parse("qreg q[1];\nsx q[0];\n")
+    // A name that is not a builtin and not declared in the file. (`sx` used to
+    // stand in here, before it became a supported gate.)
+    let err = qasm::parse("qreg q[1];\nnotagate q[0];\n")
         .unwrap_err()
         .to_string();
-    assert!(err.contains("unsupported gate `sx`"), "{err}");
+    assert!(err.contains("unsupported gate `notagate`"), "{err}");
 }
 
 #[test]
@@ -451,4 +453,92 @@ fn exponential_expansion_is_bounded() {
 
     let err = qasm::parse(&src).unwrap_err().to_string();
     assert!(err.contains("expands to more than"), "{err}");
+}
+
+/// The gates `qelib1.inc` would supply are implemented natively, since
+/// `include` is ignored. Each is checked against Qiskit's unitary separately;
+/// here we pin the identities that hold within this engine.
+#[test]
+fn qelib1_gates_import() {
+    // `u` is `u3`, and `u0` is an idle of some duration — an identity here.
+    assert_same_amplitudes(
+        &qasm::parse("qreg q[1];\nu(0.6,-0.3,1.2) q[0];\n")
+            .unwrap()
+            .run(),
+        &qasm::parse("qreg q[1];\nu3(0.6,-0.3,1.2) q[0];\n")
+            .unwrap()
+            .run(),
+    );
+    assert_same_amplitudes(
+        &qasm::parse("qreg q[1];\nh q[0];\nu0(3) q[0];\n")
+            .unwrap()
+            .run(),
+        &qasm::parse("qreg q[1];\nh q[0];\n").unwrap().run(),
+    );
+
+    // `sx` twice is X, and `sxdg` undoes it.
+    let c = qasm::parse("qreg q[1];\nsx q[0];\nsx q[0];\n").unwrap();
+    assert_relative_eq!(c.run().probability(1), 1.0, epsilon = 1e-12);
+    let c = qasm::parse("qreg q[1];\nh q[0];\nsx q[0];\nsxdg q[0];\n").unwrap();
+    assert_same_amplitudes(
+        &c.run(),
+        &qasm::parse("qreg q[1];\nh q[0];\n").unwrap().run(),
+    );
+
+    // `c3x`/`c4x` are true multi-controlled X: they fire only on all-ones.
+    let c = qasm::parse(
+        "qreg q[5];\nx q[0];\nx q[1];\nx q[2];\nx q[3];\nc4x q[0],q[1],q[2],q[3],q[4];\n",
+    )
+    .unwrap();
+    assert_relative_eq!(c.run().probability(0b11111), 1.0, epsilon = 1e-12);
+    let c = qasm::parse("qreg q[5];\nx q[0];\nx q[1];\nc4x q[0],q[1],q[2],q[3],q[4];\n").unwrap();
+    assert_relative_eq!(c.run().probability(0b00011), 1.0, epsilon = 1e-12);
+
+    // `c3sqrtx` applied twice is `c3x`.
+    let twice = qasm::parse(
+        "qreg q[4];\nh q[0];\nh q[1];\nh q[2];\nc3sqrtx q[0],q[1],q[2],q[3];\nc3sqrtx q[0],q[1],q[2],q[3];\n",
+    ).unwrap();
+    let once =
+        qasm::parse("qreg q[4];\nh q[0];\nh q[1];\nh q[2];\nc3x q[0],q[1],q[2],q[3];\n").unwrap();
+    assert_same_amplitudes(&twice.run(), &once.run());
+
+    // The relative-phase Toffoli permutes like `ccx` but is not equal to it:
+    // it differs by phases, which is the whole point of the cheaper form.
+    let rccx = qasm::parse("qreg q[3];\nh q[0];\nh q[1];\nrccx q[0],q[1],q[2];\n").unwrap();
+    let ccx = qasm::parse("qreg q[3];\nh q[0];\nh q[1];\nccx q[0],q[1],q[2];\n").unwrap();
+    for i in 0..8 {
+        assert_relative_eq!(
+            rccx.run().probability(i),
+            ccx.run().probability(i),
+            epsilon = 1e-12
+        );
+    }
+    assert!(
+        rccx.run()
+            .amplitudes()
+            .iter()
+            .zip(ccx.run().amplitudes())
+            .any(|(a, b)| (a - b).norm() > 1e-9),
+        "rccx must differ from ccx in phase"
+    );
+}
+
+/// `rxx`/`rzz` follow qelib1's decomposition, which differs from Qiskit's gate
+/// object by a global phase of theta/2 — unobservable, and expressible neither
+/// in OpenQASM 2 nor in this engine's circuit representation.
+#[test]
+fn two_qubit_rotations_import() {
+    // rzz(theta) is diagonal: it leaves populations alone.
+    let c = qasm::parse("qreg q[2];\nh q[0];\nh q[1];\nrzz(0.7) q[0],q[1];\n").unwrap();
+    for i in 0..4 {
+        assert_relative_eq!(c.run().probability(i), 0.25, epsilon = 1e-12);
+    }
+    // rzz(0) and rxx(0) are identities.
+    for src in ["rzz(0) q[0],q[1];", "rxx(0) q[0],q[1];"] {
+        let c = qasm::parse(&format!("qreg q[2];\nh q[0];\n{src}\n")).unwrap();
+        assert_same_amplitudes(
+            &c.run(),
+            &qasm::parse("qreg q[2];\nh q[0];\n").unwrap().run(),
+        );
+    }
 }

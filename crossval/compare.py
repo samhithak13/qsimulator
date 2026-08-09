@@ -35,11 +35,12 @@ import sys
 import numpy as np
 
 # Gates shared by qsimulator and Qiskit's qelib1, grouped by (qubits, angles).
-ONE_QUBIT = ["id", "h", "x", "y", "z", "s", "t", "sdg", "tdg"]
+ONE_QUBIT = ["id", "h", "x", "y", "z", "s", "t", "sdg", "tdg", "sx", "sxdg"]
 ONE_QUBIT_1ANGLE = ["rx", "ry", "rz", "u1"]
-TWO_QUBIT = ["cx", "cy", "cz", "ch", "swap"]
-TWO_QUBIT_1ANGLE = ["crz", "cu1"]
-THREE_QUBIT = ["ccx", "cswap"]
+TWO_QUBIT = ["cx", "cy", "cz", "ch", "swap", "csx"]
+TWO_QUBIT_1ANGLE = ["crz", "cu1", "crx", "cry", "rxx", "rzz"]
+THREE_QUBIT = ["ccx", "cswap", "rccx"]
+FOUR_QUBIT = ["c3x", "c3sqrtx", "rc3x"]
 
 
 def angle(rng: random.Random) -> str:
@@ -74,10 +75,22 @@ def random_qasm(n_qubits: int, n_gates: int, rng: random.Random) -> str:
             elif pick < 0.8:
                 g = rng.choice(TWO_QUBIT_1ANGLE)
                 lines.append(f"{g}({angle(rng)}) q[{a}],q[{b}];")
-            else:
+            elif rng.random() < 0.5:
                 lines.append(
                     f"cu3({angle(rng)},{angle(rng)},{angle(rng)}) q[{a}],q[{b}];"
                 )
+            else:
+                lines.append(
+                    f"cu({angle(rng)},{angle(rng)},{angle(rng)},{angle(rng)}) "
+                    f"q[{a}],q[{b}];"
+                )
+        elif n_qubits >= 4 and kind < 0.97:
+            picks = rng.sample(range(n_qubits), 4)
+            g = rng.choice(FOUR_QUBIT)
+            lines.append(f"{g} " + ",".join(f"q[{i}]" for i in picks) + ";")
+        elif n_qubits >= 5 and kind < 0.98:
+            picks = rng.sample(range(n_qubits), 5)
+            lines.append("c4x " + ",".join(f"q[{i}]" for i in picks) + ";")
         elif n_qubits >= 3:
             a, b, c = rng.sample(range(n_qubits), 3)
             g = rng.choice(THREE_QUBIT)

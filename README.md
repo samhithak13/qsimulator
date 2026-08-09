@@ -132,7 +132,7 @@ cnot 1 2        # GHZ state
 sample 1000 42
 ```
 
-Instructions: `qubits N`; `id|h|x|y|z|s|t|sdg|tdg Q`; `rx|ry|rz|p THETA Q`
+Instructions: `qubits N`; `id|h|x|y|z|s|t|sdg|tdg|sx|sxdg Q`; `rx|ry|rz|p THETA Q`
 (THETA is an arithmetic expression over numbers and `pi`, like `pi/2`, `-pi/4`,
 `2pi`, or `(pi/4+0.1)*2` — one unspaced token, since instructions split on
 whitespace);
@@ -164,12 +164,15 @@ h q[0];
 cx q[0],q[1];
 ```
 
-Supported gates: `id x y z h s t sdg tdg`, `rx/ry/rz(theta)`, `u1(lambda)`
+Supported gates: `id x y z h s t sdg tdg sx sxdg`, `rx/ry/rz(theta)`, `u1(lambda)`
 (alias `p`), `u2(phi,lambda)`, `u3(theta,phi,lambda)`, `cx`, `cy`, `cz`, `ch`,
 `crz(theta)`, `cu1(lambda)` (alias `cp`), `cu3(theta,phi,lambda)`, `swap`,
 `ccx`, `cswap`, and the primitives `U`, `CX`; plus `gate` declarations, which
 are expanded at each call site (so files Qiskit exports for composite gates
-import). Multiple `qreg`s map into one flat qubit space in declaration order;
+import), and the rest of `qelib1.inc` (`u`, `u0`, `crx`, `cry`, `csx`, `cu`,
+`rxx`, `rzz`, `rccx`, `rc3x`, `c3x`, `c3sqrtx`, `c4x`) implemented natively,
+since `include` is ignored rather than honoured.
+Multiple `qreg`s map into one flat qubit space in declaration order;
 `creg`, `barrier`, and `measure` are accepted and ignored; anything outside
 the subset is reported rather than silently mis-simulated.
 

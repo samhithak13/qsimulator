@@ -302,7 +302,8 @@ An input is treated as OpenQASM 2.0 if it ends in `.qasm` or begins with an
 
 PROGRAM FORMAT (one instruction per line; `#` starts a comment):
     qubits N                   Declare the register size (must come first)
-    id|h|x|y|z|s|t|sdg|tdg Q   Single-qubit gate on qubit Q (`id` is a no-op)
+    id|h|x|y|z|s|t|sdg|tdg|sx|sxdg Q
+                               Single-qubit gate (`id` is a no-op)
     rx|ry|rz|p THETA Q         Rotation/phase by THETA (float, or pi, pi/2, ...)
     u2 PHI LAMBDA Q            General single-qubit gate U2
     u3 THETA PHI LAMBDA Q      General single-qubit gate U3

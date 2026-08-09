@@ -28,14 +28,23 @@
 //!   name, so a program written against the primitives behaves as written.
 //! - `//` line comments and `/* ... */` block comments.
 //!
+//! - The rest of `qelib1.inc`: `u`, `u0`, `sx`, `sxdg`, `crx`, `cry`, `csx`,
+//!   `cu`, `rxx`, `rzz`, the relative-phase Toffolis `rccx` and `rc3x`, and
+//!   `c3x`, `c3sqrtx`, `c4x`. `include` is *ignored* rather than honoured, so
+//!   these are implemented here rather than read from the header. Each is
+//!   checked against Qiskit's unitary with its phase; `rxx` and `rzz` follow
+//!   qelib1's decomposition and so differ from Qiskit's gate object by a global
+//!   phase of `theta/2`, which is unobservable and which neither OpenQASM 2 nor
+//!   this engine's circuit representation can express.
+//!
 //! Anything else — `if`, `opaque`, `reset` — is reported as an
-//! unsupported-feature error rather than silently mis-simulated. Note that
-//! `include` is *ignored*, not honoured: gates that `qelib1.inc` would supply
-//! are recognised only where they are implemented natively above.
+//! unsupported-feature error rather than silently mis-simulated.
 
 use crate::error::ParseError;
+use crate::gates;
 use crate::Circuit;
 use std::collections::HashMap;
+use std::f64::consts::{FRAC_PI_2, FRAC_PI_4, PI};
 
 /// Largest register the importer will build. A dense state vector needs
 /// `16·2^n` bytes, so this caps memory and stops a malformed huge `qreg` from
@@ -553,6 +562,110 @@ fn apply_builtin(
             want(3, 0)?;
             require_distinct(q, stmt)?;
             circuit.toffoli(q[0], q[1], q[2]);
+        }
+
+        // --- The rest of qelib1 ---
+        //
+        // `include` is ignored rather than honoured, so these are implemented
+        // here instead of being read from the header. Where a gate is exactly
+        // one of this engine's primitives it is applied as one — `crx` really
+        // is a controlled Rx — which keeps diagrams and re-export readable.
+        // The rest follow qelib1's own decomposition, and every one of them is
+        // checked against Qiskit's unitary, phase included.
+        "u" => {
+            want(1, 3)?;
+            circuit.u3(angles[0], angles[1], angles[2], q[0]);
+        }
+        // An idle of duration `gamma`: no rotation, only a delay this engine
+        // has no notion of.
+        "u0" => {
+            want(1, 1)?;
+            circuit.id(q[0]);
+        }
+        "sx" => {
+            want(1, 0)?;
+            circuit.sx(q[0]);
+        }
+        "sxdg" => {
+            want(1, 0)?;
+            circuit.sxdg(q[0]);
+        }
+        "crx" => {
+            want(2, 1)?;
+            require_distinct(q, stmt)?;
+            circuit.cu(gates::rx(angles[0]), q[0], q[1]);
+        }
+        "cry" => {
+            want(2, 1)?;
+            require_distinct(q, stmt)?;
+            circuit.cu(gates::ry(angles[0]), q[0], q[1]);
+        }
+        "csx" => {
+            want(2, 0)?;
+            require_distinct(q, stmt)?;
+            circuit.cu(gates::sx(), q[0], q[1]);
+        }
+        // Controlled-U3 with an extra phase `gamma` on the control — the same
+        // shape `to_qasm` emits for an arbitrary controlled-U.
+        "cu" => {
+            want(2, 4)?;
+            require_distinct(q, stmt)?;
+            circuit.p(angles[3], q[0]);
+            circuit.cu3(angles[0], angles[1], angles[2], q[0], q[1]);
+        }
+        "rxx" => {
+            want(2, 1)?;
+            require_distinct(q, stmt)?;
+            let theta = angles[0];
+            circuit.u3(FRAC_PI_2, theta, 0.0, q[0]).h(q[1]);
+            circuit.cnot(q[0], q[1]).p(-theta, q[1]).cnot(q[0], q[1]);
+            circuit.h(q[1]).u2(-PI, PI - theta, q[0]);
+        }
+        "rzz" => {
+            want(2, 1)?;
+            require_distinct(q, stmt)?;
+            circuit.cnot(q[0], q[1]).p(angles[0], q[1]).cnot(q[0], q[1]);
+        }
+        // A *relative-phase* Toffoli: it differs from `ccx` by phases on some
+        // basis states, so it is not interchangeable with one.
+        "rccx" => {
+            want(3, 0)?;
+            require_distinct(q, stmt)?;
+            let (a, b, c) = (q[0], q[1], q[2]);
+            circuit.u2(0.0, PI, c).p(FRAC_PI_4, c);
+            circuit.cnot(b, c).p(-FRAC_PI_4, c);
+            circuit.cnot(a, c).p(FRAC_PI_4, c);
+            circuit.cnot(b, c).p(-FRAC_PI_4, c);
+            circuit.u2(0.0, PI, c);
+        }
+        // The relative-phase three-control X, likewise not a plain `c3x`.
+        "rc3x" => {
+            want(4, 0)?;
+            require_distinct(q, stmt)?;
+            let (a, b, c, d) = (q[0], q[1], q[2], q[3]);
+            circuit.u2(0.0, PI, d).p(FRAC_PI_4, d);
+            circuit.cnot(c, d).p(-FRAC_PI_4, d).u2(0.0, PI, d);
+            circuit.cnot(a, d).p(FRAC_PI_4, d);
+            circuit.cnot(b, d).p(-FRAC_PI_4, d);
+            circuit.cnot(a, d).p(FRAC_PI_4, d);
+            circuit.cnot(b, d).p(-FRAC_PI_4, d);
+            circuit.u2(0.0, PI, d).p(FRAC_PI_4, d);
+            circuit.cnot(c, d).p(-FRAC_PI_4, d).u2(0.0, PI, d);
+        }
+        "c3x" => {
+            want(4, 0)?;
+            require_distinct(q, stmt)?;
+            circuit.mcx(&q[..3], q[3]);
+        }
+        "c3sqrtx" => {
+            want(4, 0)?;
+            require_distinct(q, stmt)?;
+            circuit.mcu(gates::sx(), &q[..3], q[3]);
+        }
+        "c4x" => {
+            want(5, 0)?;
+            require_distinct(q, stmt)?;
+            circuit.mcx(&q[..4], q[4]);
         }
         other => return Err(format!("unsupported gate `{other}` in `{stmt}`")),
     }

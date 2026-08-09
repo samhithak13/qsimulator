@@ -134,17 +134,18 @@ pub(crate) fn u3_decompose(g: &Gate) -> (f64, f64, f64, f64) {
     }
 }
 
-/// The square root of X: `sqrt_x() · sqrt_x() == x()`.
+/// The square root of X: `sx() · sx() == x()`. OpenQASM's `sx`, and a native
+/// gate on much current hardware.
 ///
-/// Used by OpenQASM export as the `V` of the Barenco square-root recursion,
-/// which is how a multi-controlled X is decomposed when the register has no
-/// spare qubit to borrow.
-pub(crate) fn sqrt_x() -> Gate {
+/// Also the `V` of the Barenco square-root recursion, which is how OpenQASM
+/// export decomposes a multi-controlled X when the register has no spare qubit
+/// to borrow.
+pub fn sx() -> Gate {
     [[c(0.5, 0.5), c(0.5, -0.5)], [c(0.5, -0.5), c(0.5, 0.5)]]
 }
 
-/// The inverse of [`sqrt_x`]: `sqrt_x_dg() · sqrt_x() == I`.
-pub(crate) fn sqrt_x_dg() -> Gate {
+/// The inverse of [`sx`]: `sxdg() · sx() == I`. OpenQASM's `sxdg`.
+pub fn sxdg() -> Gate {
     [[c(0.5, -0.5), c(0.5, 0.5)], [c(0.5, 0.5), c(0.5, -0.5)]]
 }
 
@@ -308,10 +309,10 @@ mod tests {
     }
 
     #[test]
-    fn sqrt_x_squares_to_x_and_inverts() {
+    fn sx_squares_to_x_and_inverts() {
         let id = [[c(1.0, 0.0), c(0.0, 0.0)], [c(0.0, 0.0), c(1.0, 0.0)]];
-        assert_gate_eq(&mul(&sqrt_x(), &sqrt_x()), &x());
-        assert_gate_eq(&mul(&sqrt_x_dg(), &sqrt_x()), &id);
+        assert_gate_eq(&mul(&sx(), &sx()), &x());
+        assert_gate_eq(&mul(&sxdg(), &sx()), &id);
     }
 
     #[test]
