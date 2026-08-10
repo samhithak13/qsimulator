@@ -9,8 +9,11 @@
 //! - `qreg name[N];` — one or more; qubits are mapped into a single flat index
 //!   space in declaration order (first declared register gets the lowest
 //!   indices).
-//! - `creg name[N];`, `barrier ...;`, and `measure ... -> ...;` are accepted
-//!   and ignored (sampling is done separately via [`Circuit::sample`]).
+//! - `creg name[N];` and `barrier ...;` are accepted and ignored.
+//! - `measure q[i] -> c[j];` collapses qubit `i` onto a sampled outcome. The
+//!   classical bit is not modelled — nothing in this subset can read one back —
+//!   but the collapse is what makes a following gate see a definite state. A
+//!   circuit containing one is stochastic: see [`Circuit::run_seeded`].
 //! - Gates: `id x y z h s t sdg tdg` (1 qubit), `rx ry rz(theta)`, the phase gate
 //!   `u1(lambda)` / `p(lambda)`, and the general `u2(phi,lambda)` /
 //!   `u3(theta,phi,lambda)` (1 qubit); `cx cz swap` (2 qubits); `ccx`
@@ -110,7 +113,10 @@ fn parse_inner(src: &str) -> Result<Circuit, String> {
     for stmt in &statements {
         match keyword(stmt) {
             // Declarations and no-ops we accept and skip.
-            "OPENQASM" | "include" | "qreg" | "creg" | "barrier" | "measure" | "gate" => continue,
+            "OPENQASM" | "include" | "qreg" | "creg" | "barrier" | "gate" => continue,
+            // A measurement collapses the register, so ignoring one would
+            // silently give the wrong answer for anything that follows it.
+            "measure" => apply_measure(&mut circuit, stmt, &regs)?,
             // Features we deliberately reject rather than mis-simulate.
             "opaque" | "if" | "reset" => {
                 return Err(format!("unsupported OpenQASM feature `{}`", keyword(stmt)));
@@ -265,6 +271,47 @@ fn parse_gate_def(stmt: &str) -> Result<(String, GateDef), String> {
             body,
         },
     ))
+}
+
+/// Parse `measure q[i] -> c[j]` and apply the collapse. The classical target
+/// is checked for shape but not modelled.
+fn apply_measure(
+    circuit: &mut Circuit,
+    stmt: &str,
+    regs: &HashMap<String, Reg>,
+) -> Result<(), String> {
+    let rest = stmt
+        .strip_prefix("measure")
+        .ok_or_else(|| format!("malformed measurement `{stmt}`"))?;
+    let (source, dest) = rest
+        .split_once("->")
+        .ok_or_else(|| format!("measurement needs `-> target`: `{stmt}`"))?;
+    if dest.trim().is_empty() {
+        return Err(format!("measurement needs a classical target: `{stmt}`"));
+    }
+    let source = source.trim();
+    // `measure q[i] -> c[j]` measures one qubit; `measure q -> c` measures the
+    // whole register, which is how most hand-written programs end.
+    if source.contains('[') {
+        let qubits = parse_operands(source, regs)?;
+        match qubits.as_slice() {
+            [qubit] => circuit.measure(*qubit),
+            _ => {
+                return Err(format!(
+                    "measurement takes one qubit, got {} in `{stmt}`",
+                    qubits.len()
+                ))
+            }
+        };
+    } else {
+        let reg = regs
+            .get(source)
+            .ok_or_else(|| format!("unknown register `{source}` in `{stmt}`"))?;
+        for i in 0..reg.size {
+            circuit.measure(reg.offset + i);
+        }
+    }
+    Ok(())
 }
 
 /// Parse a comma-separated list of formal names, rejecting duplicates and

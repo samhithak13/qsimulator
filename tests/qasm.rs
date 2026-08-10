@@ -542,3 +542,42 @@ fn two_qubit_rotations_import() {
         );
     }
 }
+
+/// `measure` is honoured rather than ignored: it collapses the qubit, so a
+/// gate after it sees a definite state. Previously this whole circuit reduced
+/// to `h; h` and reported |0> with certainty.
+#[test]
+fn measure_collapses_on_import() {
+    let c = qasm::parse(
+        "OPENQASM 2.0;\nqreg q[1];\ncreg c[1];\nh q[0];\nmeasure q[0] -> c[0];\nh q[0];\n",
+    )
+    .expect("should parse");
+    let hist = c.sample(2000, 5);
+    let zeros = hist.get(&0).copied().unwrap_or(0);
+    assert!(
+        (800..=1200).contains(&zeros),
+        "expected a coin flip, got {zeros}/2000 zeros"
+    );
+}
+
+/// Malformed measurements are rejected rather than half-understood.
+#[test]
+fn measure_errors() {
+    for (src, needle) in [
+        (
+            "qreg q[1];\ncreg c[1];\nmeasure q[0];\n",
+            "needs `-> target`",
+        ),
+        (
+            "qreg q[1];\ncreg c[1];\nmeasure q[0] ->;\n",
+            "classical target",
+        ),
+        (
+            "qreg q[2];\ncreg c[2];\nmeasure q[0],q[1] -> c[0];\n",
+            "takes one qubit",
+        ),
+    ] {
+        let err = qasm::parse(src).unwrap_err().to_string();
+        assert!(err.contains(needle), "for `{src}`: {err}");
+    }
+}

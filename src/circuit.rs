@@ -59,6 +59,12 @@ enum Op {
         a: usize,
         b: usize,
     },
+    /// A mid-circuit measurement: collapses `qubit` onto the sampled outcome.
+    /// The classical bit it would be written to is not modelled, since nothing
+    /// in the supported subset can read one back.
+    Measure {
+        qubit: usize,
+    },
     MultiControlled {
         gate: Gate,
         controls: Vec<usize>,
@@ -441,11 +447,86 @@ impl Circuit {
         self.mcx(&[control1, control2], target)
     }
 
-    /// Run the circuit starting from |0...0> and return the final state.
+    /// Measure `qubit` in the computational basis, collapsing the register onto
+    /// the observed outcome.
+    ///
+    /// This makes the circuit *stochastic*: everything after it depends on
+    /// which outcome came up, so [`run`](Circuit::run) is no longer a pure
+    /// function of the circuit alone and [`run_seeded`](Circuit::run_seeded)
+    /// is how you choose the stream. The outcome itself is discarded — the
+    /// supported subset has no classical control to read it back — but the
+    /// collapse is what makes a later gate see a definite state rather than a
+    /// superposition.
+    pub fn measure(&mut self, qubit: usize) -> &mut Self {
+        self.ops.push(Op::Measure { qubit });
+        self
+    }
+
+    /// Whether the circuit measures at all.
+    fn has_measurement(&self) -> bool {
+        self.ops.iter().any(|op| matches!(op, Op::Measure { .. }))
+    }
+
+    /// How many of the final operations are measurements — the circuit's
+    /// readout, as opposed to a measurement something else depends on.
+    fn trailing_measurements(&self) -> usize {
+        self.ops
+            .iter()
+            .rev()
+            .take_while(|op| matches!(op, Op::Measure { .. }))
+            .count()
+    }
+
+    /// Whether a collapse can affect anything that follows it.
+    ///
+    /// Only a measurement with an operation after it can: it changes what that
+    /// operation sees. A measurement at the very end cannot, and it is that
+    /// case alone that forces [`sample`](Circuit::sample) to re-run the circuit
+    /// per shot.
+    fn measures_mid_circuit(&self) -> bool {
+        self.ops[..self.ops.len() - self.trailing_measurements()]
+            .iter()
+            .any(|op| matches!(op, Op::Measure { .. }))
+    }
+
+    /// Run the circuit starting from |0...0> and return the state it prepares.
+    ///
+    /// Measurements at the *end* of the circuit are readout and are not
+    /// applied: collapsing them would discard the prepared state and report one
+    /// arbitrary branch, and [`sample`](Circuit::sample) draws the same
+    /// distribution either way. This keeps the result deterministic for the
+    /// usual written-out program, which ends in a measurement.
+    ///
+    /// A measurement with gates *after* it does collapse, since those gates
+    /// must see a definite state. That makes the result depend on the collapse
+    /// outcomes, and this uses seed 0 — see
+    /// [`run_seeded`](Circuit::run_seeded) to choose the stream.
     pub fn run(&self) -> State {
+        self.run_seeded(0)
+    }
+
+    /// Run the circuit with an explicit seed for any mid-circuit measurement.
+    ///
+    /// Without a mid-circuit [`measure`](Circuit::measure) the seed changes
+    /// nothing and this is exactly [`run`](Circuit::run).
+    pub fn run_seeded(&self, seed: u64) -> State {
+        let mut rng = Rng::new(seed);
+        self.run_with(&mut rng)
+    }
+
+    /// Execute against a caller-supplied RNG, so repeated shots of a
+    /// stochastic circuit draw from one stream rather than restarting it.
+    fn run_with(&self, rng: &mut Rng) -> State {
         let mut state = State::new(self.n_qubits);
-        for op in &self.ops {
+        // Trailing measurements are readout: nothing follows them, so
+        // collapsing would only discard the prepared state and make the result
+        // depend on the seed. `sample` draws the same distribution either way.
+        let executable = self.ops.len() - self.trailing_measurements();
+        for op in &self.ops[..executable] {
             match op {
+                Op::Measure { qubit } => {
+                    state.measure_qubit(*qubit, rng);
+                }
                 Op::Single { gate, target, .. } => state.apply_1q(gate, *target),
                 Op::Controlled {
                     gate,
@@ -473,12 +554,26 @@ impl Circuit {
     /// whole sampling run deterministic and reproducible. Keys of the returned
     /// map are little-endian basis-state indices; values are counts.
     pub fn sample(&self, shots: usize, seed: u64) -> HashMap<usize, usize> {
-        let final_state = self.run();
         let mut rng = Rng::new(seed);
         let mut histogram = HashMap::new();
-        for _ in 0..shots {
-            let outcome = final_state.clone().measure_all(&mut rng);
-            *histogram.entry(outcome).or_insert(0) += 1;
+
+        // A mid-circuit measurement branches the state, so every shot has to
+        // re-run the circuit; there is no single final state to draw from.
+        // Otherwise — including when the circuit ends with measurements, as
+        // most written-out programs do — running once and measuring clones
+        // draws from the same distribution, and executes the circuit once
+        // instead of `shots` times.
+        if self.measures_mid_circuit() {
+            for _ in 0..shots {
+                let outcome = self.run_with(&mut rng).measure_all(&mut rng);
+                *histogram.entry(outcome).or_insert(0) += 1;
+            }
+        } else {
+            let final_state = self.run();
+            for _ in 0..shots {
+                let outcome = final_state.clone().measure_all(&mut rng);
+                *histogram.entry(outcome).or_insert(0) += 1;
+            }
         }
         histogram
     }
@@ -514,6 +609,9 @@ impl Circuit {
     pub fn to_qasm(&self) -> Result<String, ExportError> {
         let mut out = String::from("OPENQASM 2.0;\ninclude \"qelib1.inc\";\n");
         out.push_str(&format!("qreg q[{}];\n", self.n_qubits));
+        if self.has_measurement() {
+            out.push_str(&format!("creg c[{}];\n", self.n_qubits));
+        }
 
         for op in &self.ops {
             match op {
@@ -577,6 +675,11 @@ impl Circuit {
                 Op::Swap { a, b } => {
                     out.push_str(&format!("swap q[{a}],q[{b}];\n"));
                 }
+                // The classical bit is not modelled, so each measurement gets
+                // its own bit, named after the qubit it came from.
+                Op::Measure { qubit } => {
+                    out.push_str(&format!("measure q[{qubit}] -> c[{qubit}];\n"));
+                }
                 Op::MultiControlled {
                     gate,
                     controls,
@@ -637,6 +740,9 @@ impl Circuit {
                     col[*a] = Some("x");
                     col[*b] = Some("x");
                     fill_connector(&mut col, &[*a, *b]);
+                }
+                Op::Measure { qubit } => {
+                    col[*qubit] = Some("M");
                 }
                 Op::MultiControlled {
                     controls,

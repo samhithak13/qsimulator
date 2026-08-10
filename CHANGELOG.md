@@ -6,6 +6,27 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- Mid-circuit measurement: `Circuit::measure`, the `measure Q` program
+  instruction, OpenQASM `measure q[i] -> c[j]` and `measure q -> c` on import,
+  and a `creg` plus `measure` lines on export. `Circuit::run_seeded` chooses
+  the collapse stream; `Circuit::sample` re-runs the circuit per shot when a
+  measurement can affect what follows it. Validated against Qiskit Aer, since a
+  branching circuit cannot be checked by comparing state vectors.
+
+### Fixed
+- OpenQASM `measure` was accepted and silently ignored, so a measurement with
+  gates after it gave the wrong answer rather than an error — `h; measure; h`
+  reported |0> with certainty where the real result is a coin flip, because
+  ignoring the collapse turns the two Hadamards into an identity.
+
+### Changed
+- Measurements at the *end* of a circuit are treated as readout and are not
+  applied by `run`, which keeps the prepared state visible and the result
+  deterministic — nearly every written-out program ends in a measurement, and
+  collapsing it would report one arbitrary branch instead. Sampling draws the
+  same distribution either way, so this changes no histogram.
+
 ## [0.3.0] - 2026-08-09
 
 The OpenQASM bridge now works in both directions. 0.2.0 made every builder gate

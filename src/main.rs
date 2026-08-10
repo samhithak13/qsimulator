@@ -315,6 +315,7 @@ PROGRAM FORMAT (one instruction per line; `#` starts a comment):
     toffoli C1 C2 T            CCNOT
     mcx C... T                 Multi-controlled X, any number of controls
     mcu3 THETA PHI LAMBDA C... T   Multi-controlled U3
+    measure Q                  Collapse qubit Q (readout if nothing follows)
     sample SHOTS SEED          Sample the final state (optional, once)
 
 EXAMPLE (GHZ state):

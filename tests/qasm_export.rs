@@ -298,3 +298,27 @@ fn single_gate_export_error_reads_well() {
         "cannot export single-qubit gate `W` to OpenQASM 2"
     );
 }
+
+/// A circuit that measures exports a `creg` to measure into, and re-imports to
+/// an equivalent circuit — equivalent in distribution, since it is stochastic.
+#[test]
+fn measurement_exports_with_a_creg() {
+    let mut c = Circuit::new(2);
+    c.h(0).measure(0).cnot(0, 1);
+
+    let qasm = c.to_qasm().expect("should export");
+    assert!(qasm.contains("creg c[2];"), "{qasm}");
+    assert!(qasm.contains("measure q[0] -> c[0];"), "{qasm}");
+
+    let reimported = qasm::parse(&qasm).expect("should re-import");
+    assert_eq!(reimported.sample(1000, 9), c.sample(1000, 9));
+}
+
+/// A circuit with no measurement still exports no `creg`, so the common case
+/// is unchanged.
+#[test]
+fn no_creg_without_measurement() {
+    let mut c = Circuit::new(2);
+    c.h(0).cnot(0, 1);
+    assert!(!c.to_qasm().unwrap().contains("creg"), "{:?}", c.to_qasm());
+}
