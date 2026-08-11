@@ -12,6 +12,24 @@ as an independent reference implementation. It runs two phases, each for
   the program; Qiskit runs it as qsimulator exports it (`--emit-qasm`), that is
   after decomposition. Checks that a decomposed export still means the same
   thing to another tool.
+- **measure** — a random circuit whose state collapses partway through, sampled
+  by qsimulator and by Qiskit Aer over the exported program, compared by total
+  variation distance. Runs for a tenth of `--trials`, since each trial samples
+  `--shots` (default 20000) on both sides.
+
+A circuit with a mid-circuit measurement has no single state vector, so the
+first two phases cannot reach it — hence the third, and hence a statistical
+comparison rather than an exact one.
+
+The generator sandwiches the measurement between two basis-changing gates on
+the measured qubit. Both halves matter: collapsing a qubit already in |0> or
+|1> does nothing, and a collapse commutes with anything diagonal or
+permutation-like in the computational basis (X, Z, S, T, CNOT, SWAP). A circuit
+missing either would give the same distribution whether or not the measurement
+happened, and would pass even with the collapse ignored entirely — which was
+true of a first version of this phase. Against the correct engine the worst
+distance over 150 trials was 0.017; against an engine that drops the collapse
+it is about 0.5, caught in roughly 7 trials in 10.
 
 ## Running
 

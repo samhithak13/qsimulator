@@ -8,6 +8,12 @@ Two phases, each run for `--trials` random circuits:
     CLI, which prints the final amplitudes as JSON) and Qiskit's reference
     `Statevector`. This checks that the two engines agree gate for gate.
 
+  * **measure** — generate a random program containing a *mid-circuit*
+    measurement, and compare qsimulator's sampled distribution against Qiskit
+    Aer's over the exported program. A circuit whose state collapses partway
+    has no single state vector, so this is the only phase that can check it;
+    the comparison is statistical, over total variation distance.
+
   * **export** — generate a random program in qsimulator's native text format,
     including multi-controlled gates that OpenQASM 2 has no way to write
     directly. qsimulator runs it, while Qiskit runs the program as qsimulator
@@ -29,6 +35,7 @@ import argparse
 import json
 import os
 import random
+import re
 import subprocess
 import sys
 
@@ -140,6 +147,83 @@ def random_program(n_qubits: int, n_gates: int, rng: random.Random) -> str:
     return "\n".join(lines) + "\n"
 
 
+def random_measured_program(n_qubits: int, n_gates: int, rng: random.Random) -> str:
+    """A random circuit whose state collapses partway through.
+
+    Guarantees at least one measurement with gates after it — the case that
+    actually branches — and measures every qubit at the end so that Aer's
+    classical register holds the same thing qsimulator samples.
+
+    The measured qubit is deliberately put into superposition just before the
+    collapse and taken out of the computational basis just after. Both are
+    needed for the phase to have any teeth:
+
+    - collapsing a qubit already in |0> or |1> does nothing, and
+    - a collapse commutes with anything diagonal or permutation-like in that
+      basis (X, Z, S, T, CNOT, SWAP, ...),
+
+    so a circuit lacking either would give the same distribution whether or not
+    the measurement happened — and would pass even with the collapse ignored
+    entirely, which is the bug this phase exists to catch. Sandwiching the
+    measurement between two basis-changing gates is what turns lost coherence
+    into a difference in the histogram. The surrounding gates stay random, so
+    the probe runs in varied entanglement contexts.
+    """
+    lines = [f"qubits {n_qubits}"]
+
+    def gate() -> str:
+        if n_qubits >= 2 and rng.random() < 0.4:
+            a, b = rng.sample(range(n_qubits), 2)
+            return f"{rng.choice(['cnot', 'cz', 'cy', 'ch', 'swap'])} {a} {b}"
+        q = rng.randrange(n_qubits)
+        if rng.random() < 0.5:
+            return f"{rng.choice(ONE_QUBIT)} {q}"
+        return f"u3 {angle(rng)} {angle(rng)} {angle(rng)} {q}"
+
+    # Gates, a collapse, then more gates so the collapse actually matters.
+    for _ in range(max(1, n_gates // 2)):
+        lines.append(gate())
+    measured = rng.randrange(n_qubits)
+    # Superposition in, collapse, back out of the basis — see the note above.
+    lines.append(rng.choice([f"h {measured}", f"sx {measured}"]))
+    lines.append(f"measure {measured}")
+    lines.append(rng.choice([f"h {measured}", f"sx {measured}"]))
+    for _ in range(max(1, n_gates // 2)):
+        lines.append(gate())
+    # Read every qubit out, so both engines report the same register.
+    lines += [f"measure {q}" for q in range(n_qubits)]
+    return "\n".join(lines) + "\n"
+
+
+def qsim_counts(program: str, binary: str, shots: int, seed: int) -> dict[str, float]:
+    """qsimulator's sampled distribution, parsed from its histogram output."""
+    out = qsim(["--shots", str(shots), "--seed", str(seed)], program, binary)
+    counts = {m[1]: int(m[2]) for m in re.finditer(r"\|(\d+)>: (\d+) shots", out)}
+    total = sum(counts.values())
+    if total != shots:
+        raise RuntimeError(f"parsed {total} of {shots} shots from:\n{out}")
+    return {k: v / total for k, v in counts.items()}
+
+
+def aer_counts(qasm: str, shots: int, seed: int) -> dict[str, float]:
+    """Qiskit Aer's sampled distribution over the same program."""
+    from qiskit import qasm2, transpile
+    from qiskit_aer import AerSimulator
+
+    circuit = qasm2.loads(qasm, custom_instructions=qasm2.LEGACY_CUSTOM_INSTRUCTIONS)
+    sim = AerSimulator(seed_simulator=seed)
+    result = sim.run(transpile(circuit, sim), shots=shots).result().get_counts()
+    # Qiskit orders a count key c[n-1]...c[0], and our export writes qubit i to
+    # c[i], so the two engines already agree on bit order.
+    total = sum(result.values())
+    return {k.replace(" ", ""): v / total for k, v in result.items()}
+
+
+def total_variation(a: dict[str, float], b: dict[str, float]) -> float:
+    """Half the L1 distance between two distributions: 0 identical, 1 disjoint."""
+    return 0.5 * sum(abs(a.get(k, 0.0) - b.get(k, 0.0)) for k in set(a) | set(b))
+
+
 def qsim(args: list[str], program: str, binary: str) -> str:
     result = subprocess.run(
         [binary, *args, "-"],
@@ -244,6 +328,38 @@ def run_export_phase(args, binary: str, rng: random.Random) -> float | None:
     return worst
 
 
+def run_measure_phase(args, binary: str, rng: random.Random) -> float | None:
+    """Both engines sample a circuit that collapses partway through.
+
+    Both sides are sampled, so the comparison carries shot noise on both. At the
+    default 20000 shots the worst total variation measured over 150 passing
+    trials was 0.017, while ignoring the collapse — the bug this phase exists to
+    catch — produces around 0.5. The default tolerance sits about 3x above the
+    observed noise and 30x below that signal.
+    """
+    worst = 0.0
+    trials = max(1, args.trials // 10)
+    for trial in range(trials):
+        n_qubits = rng.randint(2, min(4, args.max_qubits))
+        program = random_measured_program(n_qubits, rng.randint(2, 3 * n_qubits), rng)
+        exported = qsim(["--emit-qasm"], program, binary)
+        seed = rng.randrange(1 << 30)
+
+        mine = qsim_counts(program, binary, args.shots, seed)
+        theirs = aer_counts(exported, args.shots, seed)
+        distance = total_variation(mine, theirs)
+        worst = max(worst, distance)
+        if distance > args.measure_tol:
+            print(
+                f"FAIL (measure trial {trial}): total variation {distance:.4f} "
+                f"exceeds {args.measure_tol:g}"
+            )
+            print(f"{program}\n--- exported as ---\n{exported}")
+            print(f"qsimulator {mine}\naer        {theirs}")
+            return None
+    return worst
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--trials", type=int, default=500, help="trials per phase")
@@ -251,6 +367,15 @@ def main() -> int:
     parser.add_argument("--tol", type=float, default=1e-9)
     parser.add_argument("--max-qubits", type=int, default=5)
     parser.add_argument("--binary", default=None, help="path to the qsimulator binary")
+    parser.add_argument(
+        "--shots", type=int, default=20000, help="shots per measure-phase trial"
+    )
+    parser.add_argument(
+        "--measure-tol",
+        type=float,
+        default=0.05,
+        help="total-variation tolerance for the sampled measure phase",
+    )
     args = parser.parse_args()
 
     binary = args.binary or build_binary()
@@ -264,6 +389,14 @@ def main() -> int:
             f"OK: {args.trials} {label} trials agree with Qiskit "
             f"(worst fidelity {worst:.15f}, tol {args.tol:g})"
         )
+
+    worst = run_measure_phase(args, binary, rng)
+    if worst is None:
+        return 1
+    print(
+        f"OK: {max(1, args.trials // 10)} measure trials agree with Aer "
+        f"(worst total variation {worst:.4f}, tol {args.measure_tol:g})"
+    )
     return 0
 
 

@@ -7,6 +7,10 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- A third cross-validation phase: circuits with a mid-circuit measurement,
+  sampled by qsimulator and by Qiskit Aer over the exported program and
+  compared by total variation distance. Such a circuit has no single state
+  vector, so the two existing phases could not reach it.
 - Mid-circuit measurement: `Circuit::measure`, the `measure Q` program
   instruction, OpenQASM `measure q[i] -> c[j]` and `measure q -> c` on import,
   and a `creg` plus `measure` lines on export. `Circuit::run_seeded` chooses

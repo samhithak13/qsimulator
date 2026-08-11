@@ -1,2 +1,5 @@
 qiskit>=1.0
 numpy>=1.24
+# Shot-based reference for circuits with mid-circuit measurement, which
+# have no single state vector to compare against.
+qiskit-aer>=0.13
