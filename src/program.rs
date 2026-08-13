@@ -18,8 +18,9 @@
 //! `crz/cp THETA C T`, `cu3 THETA PHI LAMBDA C T`, and `swap A B`; three-qubit
 //! `toffoli C1 C2 T` and `cswap C A B`; the open-ended multi-controlled
 //! `mcx C... T` and `mcu3 THETA PHI LAMBDA C... T`; `measure Q`, which
-//! collapses a qubit mid-circuit, and `reset Q`, which forces it to |0>; and a
-//! terminal
+//! collapses a qubit mid-circuit, `reset Q`, which forces it to |0>, and
+//! `if VALUE INSTRUCTION`, which guards one instruction on the classical
+//! register; and a terminal
 //! `sample SHOTS SEED`. An angle is an arithmetic expression over numbers and
 //! `pi` — `0.7`, `pi`, `pi/2`, `-pi/4`, `2pi`, or `(pi/4 + 0.1)*2` — with the
 //! operators `+ - * / ^`, parentheses, and `sin`/`cos`/`tan`/`exp`/`ln`/`sqrt`.
@@ -91,138 +92,6 @@ pub fn parse(src: &str) -> Result<Program, ParseError> {
             .ok_or_else(|| at("first instruction must be `qubits N`".into()))?;
 
         match cmd {
-            "id" | "h" | "x" | "y" | "z" | "s" | "t" | "sdg" | "tdg" | "sx" | "sxdg" => {
-                expect_arity(&toks, 2).map_err(&at)?;
-                let q = parse_qubit(&toks, 1, n).map_err(&at)?;
-                match cmd {
-                    "id" => c.id(q),
-                    "h" => c.h(q),
-                    "x" => c.x(q),
-                    "y" => c.y(q),
-                    "z" => c.z(q),
-                    "s" => c.s(q),
-                    "t" => c.t(q),
-                    "sdg" => c.sdg(q),
-                    "sx" => c.sx(q),
-                    "sxdg" => c.sxdg(q),
-                    "tdg" => c.tdg(q),
-                    _ => unreachable!(),
-                };
-            }
-            "rx" | "ry" | "rz" | "p" => {
-                expect_arity(&toks, 3).map_err(&at)?;
-                let theta = parse_angle(toks[1]).map_err(&at)?;
-                let q = parse_qubit(&toks, 2, n).map_err(&at)?;
-                match cmd {
-                    "rx" => c.rx(theta, q),
-                    "ry" => c.ry(theta, q),
-                    "rz" => c.rz(theta, q),
-                    "p" => c.p(theta, q),
-                    _ => unreachable!(),
-                };
-            }
-            "u2" => {
-                expect_arity(&toks, 4).map_err(&at)?;
-                let phi = parse_angle(toks[1]).map_err(&at)?;
-                let lambda = parse_angle(toks[2]).map_err(&at)?;
-                let q = parse_qubit(&toks, 3, n).map_err(&at)?;
-                c.u2(phi, lambda, q);
-            }
-            "u3" => {
-                expect_arity(&toks, 5).map_err(&at)?;
-                let theta = parse_angle(toks[1]).map_err(&at)?;
-                let phi = parse_angle(toks[2]).map_err(&at)?;
-                let lambda = parse_angle(toks[3]).map_err(&at)?;
-                let q = parse_qubit(&toks, 4, n).map_err(&at)?;
-                c.u3(theta, phi, lambda, q);
-            }
-            "cnot" | "cz" | "cy" | "ch" => {
-                expect_arity(&toks, 3).map_err(&at)?;
-                let ctrl = parse_qubit(&toks, 1, n).map_err(&at)?;
-                let tgt = parse_qubit(&toks, 2, n).map_err(&at)?;
-                if ctrl == tgt {
-                    return Err(at("control and target must differ".into()));
-                }
-                match cmd {
-                    "cnot" => c.cnot(ctrl, tgt),
-                    "cy" => c.cy(ctrl, tgt),
-                    "ch" => c.ch(ctrl, tgt),
-                    _ => c.cz(ctrl, tgt),
-                };
-            }
-            "cswap" => {
-                expect_arity(&toks, 4).map_err(&at)?;
-                let ctrl = parse_qubit(&toks, 1, n).map_err(&at)?;
-                let a = parse_qubit(&toks, 2, n).map_err(&at)?;
-                let b = parse_qubit(&toks, 3, n).map_err(&at)?;
-                if ctrl == a || ctrl == b || a == b {
-                    return Err(at("cswap qubits must be distinct".into()));
-                }
-                c.cswap(ctrl, a, b);
-            }
-            "crz" | "cp" => {
-                expect_arity(&toks, 4).map_err(&at)?;
-                let theta = parse_angle(toks[1]).map_err(&at)?;
-                let ctrl = parse_qubit(&toks, 2, n).map_err(&at)?;
-                let tgt = parse_qubit(&toks, 3, n).map_err(&at)?;
-                if ctrl == tgt {
-                    return Err(at("control and target must differ".into()));
-                }
-                match cmd {
-                    "crz" => c.crz(theta, ctrl, tgt),
-                    _ => c.cp(theta, ctrl, tgt),
-                };
-            }
-            "cu3" => {
-                expect_arity(&toks, 6).map_err(&at)?;
-                let theta = parse_angle(toks[1]).map_err(&at)?;
-                let phi = parse_angle(toks[2]).map_err(&at)?;
-                let lambda = parse_angle(toks[3]).map_err(&at)?;
-                let ctrl = parse_qubit(&toks, 4, n).map_err(&at)?;
-                let tgt = parse_qubit(&toks, 5, n).map_err(&at)?;
-                if ctrl == tgt {
-                    return Err(at("control and target must differ".into()));
-                }
-                c.cu3(theta, phi, lambda, ctrl, tgt);
-            }
-            "swap" => {
-                expect_arity(&toks, 3).map_err(&at)?;
-                let a = parse_qubit(&toks, 1, n).map_err(&at)?;
-                let b = parse_qubit(&toks, 2, n).map_err(&at)?;
-                c.swap(a, b);
-            }
-            "toffoli" => {
-                expect_arity(&toks, 4).map_err(&at)?;
-                let c1 = parse_qubit(&toks, 1, n).map_err(&at)?;
-                let c2 = parse_qubit(&toks, 2, n).map_err(&at)?;
-                let tgt = parse_qubit(&toks, 3, n).map_err(&at)?;
-                if c1 == tgt || c2 == tgt {
-                    return Err(at("control and target must differ".into()));
-                }
-                c.toffoli(c1, c2, tgt);
-            }
-            // Multi-controlled gates: every token but the last is a control,
-            // the last is the target, so the arity is open-ended.
-            "mcx" => {
-                let (controls, tgt) = parse_control_list(&toks, 1, n).map_err(&at)?;
-                c.mcx(&controls, tgt);
-            }
-            "mcu3" => {
-                let theta = parse_angle(toks.get(1).copied().unwrap_or("")).map_err(&at)?;
-                let phi = parse_angle(toks.get(2).copied().unwrap_or("")).map_err(&at)?;
-                let lambda = parse_angle(toks.get(3).copied().unwrap_or("")).map_err(&at)?;
-                let (controls, tgt) = parse_control_list(&toks, 4, n).map_err(&at)?;
-                c.mcu(crate::gates::u3(theta, phi, lambda), &controls, tgt);
-            }
-            "measure" | "reset" => {
-                expect_arity(&toks, 2).map_err(&at)?;
-                let q = parse_qubit(&toks, 1, n).map_err(&at)?;
-                if cmd == "measure" {
-                    c.measure(q);
-                } else {
-                    c.reset(q);
-                }
-            }
             "sample" => {
                 if sample.is_some() {
                     return Err(at("`sample` may only appear once".into()));
@@ -236,13 +105,177 @@ pub fn parse(src: &str) -> Result<Program, ParseError> {
                     .map_err(|_| at(format!("invalid seed `{}`", toks[2])))?;
                 sample = Some(SampleSpec { shots, seed });
             }
-            other => return Err(at(format!("unknown instruction `{other}`"))),
+            _ => apply_instruction(c, &toks, n).map_err(&at)?,
         }
     }
 
     let circuit =
         circuit.ok_or_else(|| ParseError::new("program is empty (expected `qubits N`)"))?;
     Ok(Program { circuit, sample })
+}
+
+/// Apply one circuit instruction. Errors carry no line number; the caller adds
+/// it. Split out from `parse` so a conditional can re-enter it for the
+/// statement it guards.
+fn apply_instruction(c: &mut Circuit, toks: &[&str], n: usize) -> Result<(), String> {
+    let cmd = toks[0];
+    match cmd {
+        "id" | "h" | "x" | "y" | "z" | "s" | "t" | "sdg" | "tdg" | "sx" | "sxdg" => {
+            expect_arity(toks, 2)?;
+            let q = parse_qubit(toks, 1, n)?;
+            match cmd {
+                "id" => c.id(q),
+                "h" => c.h(q),
+                "x" => c.x(q),
+                "y" => c.y(q),
+                "z" => c.z(q),
+                "s" => c.s(q),
+                "t" => c.t(q),
+                "sdg" => c.sdg(q),
+                "sx" => c.sx(q),
+                "sxdg" => c.sxdg(q),
+                "tdg" => c.tdg(q),
+                _ => unreachable!(),
+            };
+        }
+        "rx" | "ry" | "rz" | "p" => {
+            expect_arity(toks, 3)?;
+            let theta = parse_angle(toks[1])?;
+            let q = parse_qubit(toks, 2, n)?;
+            match cmd {
+                "rx" => c.rx(theta, q),
+                "ry" => c.ry(theta, q),
+                "rz" => c.rz(theta, q),
+                "p" => c.p(theta, q),
+                _ => unreachable!(),
+            };
+        }
+        "u2" => {
+            expect_arity(toks, 4)?;
+            let phi = parse_angle(toks[1])?;
+            let lambda = parse_angle(toks[2])?;
+            let q = parse_qubit(toks, 3, n)?;
+            c.u2(phi, lambda, q);
+        }
+        "u3" => {
+            expect_arity(toks, 5)?;
+            let theta = parse_angle(toks[1])?;
+            let phi = parse_angle(toks[2])?;
+            let lambda = parse_angle(toks[3])?;
+            let q = parse_qubit(toks, 4, n)?;
+            c.u3(theta, phi, lambda, q);
+        }
+        "cnot" | "cz" | "cy" | "ch" => {
+            expect_arity(toks, 3)?;
+            let ctrl = parse_qubit(toks, 1, n)?;
+            let tgt = parse_qubit(toks, 2, n)?;
+            if ctrl == tgt {
+                return Err("control and target must differ".into());
+            }
+            match cmd {
+                "cnot" => c.cnot(ctrl, tgt),
+                "cy" => c.cy(ctrl, tgt),
+                "ch" => c.ch(ctrl, tgt),
+                _ => c.cz(ctrl, tgt),
+            };
+        }
+        "cswap" => {
+            expect_arity(toks, 4)?;
+            let ctrl = parse_qubit(toks, 1, n)?;
+            let a = parse_qubit(toks, 2, n)?;
+            let b = parse_qubit(toks, 3, n)?;
+            if ctrl == a || ctrl == b || a == b {
+                return Err("cswap qubits must be distinct".into());
+            }
+            c.cswap(ctrl, a, b);
+        }
+        "crz" | "cp" => {
+            expect_arity(toks, 4)?;
+            let theta = parse_angle(toks[1])?;
+            let ctrl = parse_qubit(toks, 2, n)?;
+            let tgt = parse_qubit(toks, 3, n)?;
+            if ctrl == tgt {
+                return Err("control and target must differ".into());
+            }
+            match cmd {
+                "crz" => c.crz(theta, ctrl, tgt),
+                _ => c.cp(theta, ctrl, tgt),
+            };
+        }
+        "cu3" => {
+            expect_arity(toks, 6)?;
+            let theta = parse_angle(toks[1])?;
+            let phi = parse_angle(toks[2])?;
+            let lambda = parse_angle(toks[3])?;
+            let ctrl = parse_qubit(toks, 4, n)?;
+            let tgt = parse_qubit(toks, 5, n)?;
+            if ctrl == tgt {
+                return Err("control and target must differ".into());
+            }
+            c.cu3(theta, phi, lambda, ctrl, tgt);
+        }
+        "swap" => {
+            expect_arity(toks, 3)?;
+            let a = parse_qubit(toks, 1, n)?;
+            let b = parse_qubit(toks, 2, n)?;
+            c.swap(a, b);
+        }
+        "toffoli" => {
+            expect_arity(toks, 4)?;
+            let c1 = parse_qubit(toks, 1, n)?;
+            let c2 = parse_qubit(toks, 2, n)?;
+            let tgt = parse_qubit(toks, 3, n)?;
+            if c1 == tgt || c2 == tgt {
+                return Err("control and target must differ".into());
+            }
+            c.toffoli(c1, c2, tgt);
+        }
+        // Multi-controlled gates: every token but the last is a control,
+        // the last is the target, so the arity is open-ended.
+        "mcx" => {
+            let (controls, tgt) = parse_control_list(toks, 1, n)?;
+            c.mcx(&controls, tgt);
+        }
+        "mcu3" => {
+            let theta = parse_angle(toks.get(1).copied().unwrap_or(""))?;
+            let phi = parse_angle(toks.get(2).copied().unwrap_or(""))?;
+            let lambda = parse_angle(toks.get(3).copied().unwrap_or(""))?;
+            let (controls, tgt) = parse_control_list(toks, 4, n)?;
+            c.mcu(crate::gates::u3(theta, phi, lambda), &controls, tgt);
+        }
+        "measure" | "reset" => {
+            expect_arity(toks, 2)?;
+            let q = parse_qubit(toks, 1, n)?;
+            if cmd == "measure" {
+                c.measure(q);
+            } else {
+                c.reset(q);
+            }
+        }
+        // `if VALUE INSTRUCTION ...` guards one instruction on the classical
+        // register, the native spelling of OpenQASM's `if (c == VALUE)`.
+        "if" => {
+            if toks.len() < 3 {
+                return Err("`if` expects a value then an instruction".to_string());
+            }
+            let value: u64 = toks[1]
+                .parse()
+                .map_err(|_| format!("invalid conditional value `{}`", toks[1]))?;
+            let guarded = &toks[2..];
+            if matches!(guarded[0], "measure" | "reset" | "if") {
+                return Err(format!(
+                    "only a gate may be conditional, not `{}`",
+                    guarded[0]
+                ));
+            }
+            // Build in isolation so operand errors surface before wrapping.
+            let mut block = Circuit::new(n);
+            apply_instruction(&mut block, guarded, n)?;
+            c.if_classical_eq(value, |inner| inner.extend_from(&block));
+        }
+        other => return Err(format!("unknown instruction `{other}`")),
+    }
+    Ok(())
 }
 
 /// Require a line to have exactly `k` whitespace tokens.

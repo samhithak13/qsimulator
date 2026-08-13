@@ -138,7 +138,7 @@ Instructions: `qubits N`; `id|h|x|y|z|s|t|sdg|tdg|sx|sxdg Q`; `rx|ry|rz|p THETA 
 whitespace);
 `u2 PHI LAMBDA Q`; `u3 THETA PHI LAMBDA Q`; `cnot|cy|cz|ch C T`;
 `crz|cp THETA C T`; `cu3 THETA PHI LAMBDA C T`; `swap A B`; `cswap C A B`;
-`toffoli C1 C2 T`; `measure Q`; `reset Q`; the open-ended `mcx C... T` and
+`toffoli C1 C2 T`; `measure Q`; `reset Q`; `if VALUE INSTRUCTION`; the open-ended `mcx C... T` and
 `mcu3 THETA PHI LAMBDA C... T`; and an optional `sample SHOTS SEED`.
 
 Sampling flags work on any program, including OpenQASM files, which have no

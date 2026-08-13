@@ -176,6 +176,9 @@ cu3 0.1 0.2 0.3 0 2
 swap 0 2
 toffoli 0 1 2
 cswap 0 1 2
+measure 0
+reset 1
+if 1 x 2
 mcx 0 1 2
 mcu3 0.1 0.2 0.3 0 1 2
 sample 100 42
@@ -217,6 +220,25 @@ fn mcu3_applies_a_multi_controlled_phase() {
     }
 }
 
+/// `if VALUE INSTRUCTION` guards an instruction on the classical register, the
+/// native spelling of OpenQASM's `if (c == VALUE)`.
+#[test]
+fn if_guards_an_instruction() {
+    let prog = program::parse("qubits 2\nh 0\nmeasure 0\nif 1 x 1\nmeasure 1\n").expect("parse");
+    let hist = prog.circuit.sample(2000, 4);
+    // The guarded flip correlates the qubits: only 00 and 11 occur.
+    assert_eq!(hist.get(&0b01).copied().unwrap_or(0), 0);
+    assert_eq!(hist.get(&0b10).copied().unwrap_or(0), 0);
+    assert_eq!(
+        hist.get(&0b00).copied().unwrap_or(0) + hist.get(&0b11).copied().unwrap_or(0),
+        2000
+    );
+
+    // A guard that never matches leaves the circuit alone.
+    let quiet = program::parse("qubits 1\nif 1 x 0\n").expect("parse");
+    assert_relative_eq!(quiet.circuit.run().probability(0), 1.0, epsilon = 1e-12);
+}
+
 #[test]
 fn native_error_paths() {
     let cases = [
@@ -230,6 +252,17 @@ fn native_error_paths() {
         ("qubits 3\nmcu3 0.1 0.2 0.3 2\n", "at least 6 tokens"),
         ("qubits 3\nmcu3 nope 0.2 0.3 0 2\n", "invalid angle"),
         ("qubits 3\nmcx 0 9\n", "out of range"),
+        ("qubits 1\nif 1\n", "expects a value then an instruction"),
+        ("qubits 1\nif nope x 0\n", "invalid conditional value"),
+        (
+            "qubits 1\nif 1 measure 0\n",
+            "only a gate may be conditional",
+        ),
+        (
+            "qubits 1\nif 1 if 1 x 0\n",
+            "only a gate may be conditional",
+        ),
+        ("qubits 1\nif 1 bogus 0\n", "unknown instruction"),
         (
             "qubits 2\nh 0\nsample 1 1\nsample 2 2\n",
             "may only appear once",

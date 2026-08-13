@@ -6,8 +6,9 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-- Classical feed-forward: `Circuit::if_classical_eq` and OpenQASM
-  `if (c == value) <gate>;` on import and export, plus `Circuit::measure_into`
+- Classical feed-forward: `Circuit::if_classical_eq`, the `if VALUE
+  INSTRUCTION` program instruction, and OpenQASM `if (c == value) <gate>;`
+  on import and export, plus `Circuit::measure_into`
   and `Circuit::n_qubits`. The circuit has one classical register as wide as
   the quantum one; `measure` writes qubit `i` to bit `i`, and declared `creg`s
   share that bit space in declaration order. `if` was the last unsupported

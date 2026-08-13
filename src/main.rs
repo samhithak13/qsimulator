@@ -317,6 +317,8 @@ PROGRAM FORMAT (one instruction per line; `#` starts a comment):
     mcu3 THETA PHI LAMBDA C... T   Multi-controlled U3
     measure Q                  Collapse qubit Q (readout if nothing follows)
     reset Q                    Collapse qubit Q and force it to |0>
+    if VALUE INSTRUCTION       Run INSTRUCTION only if the classical register
+                               equals VALUE (measure writes qubit i to bit i)
     sample SHOTS SEED          Sample the final state (optional, once)
 
 EXAMPLE (GHZ state):

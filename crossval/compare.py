@@ -191,6 +191,11 @@ def random_measured_program(n_qubits: int, n_gates: int, rng: random.Random) -> 
     lines.append(rng.choice([f"h {measured}", f"sx {measured}"]))
     lines.append(rng.choice([f"measure {measured}", f"reset {measured}"]))
     lines.append(rng.choice([f"h {measured}", f"sx {measured}"]))
+    # Sometimes steer a later gate on the outcome, so the export path carries a
+    # conditional through its `if(c==...)` rendering as well.
+    if rng.random() < 0.5:
+        other = rng.randrange(n_qubits)
+        lines.append(f"if {1 << measured} {rng.choice(['x', 'h', 'z'])} {other}")
     for _ in range(max(1, n_gates // 2)):
         lines.append(gate())
     # Read every qubit out, so both engines report the same register.
