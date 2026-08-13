@@ -2,9 +2,11 @@
 //! is moved to qubit 2 using a shared Bell pair, a Bell-basis measurement, and
 //! classically conditioned corrections.
 //!
-//! This uses the lower-level `State` API directly, since teleportation needs
-//! mid-circuit measurement and feed-forward that the `Circuit` builder (a
-//! sequence of unitaries) does not model.
+//! This uses the lower-level `State` API directly. `Circuit` models the
+//! mid-circuit measurement (`Circuit::measure`), but not the *feed-forward*:
+//! the corrections below depend on which outcomes came up, and a `Circuit`
+//! has no classical bits to branch on. Reading the outcomes back needs the
+//! `State` API, where `measure_qubit` returns them.
 //!
 //! Run with: `cargo run --example teleportation`
 
