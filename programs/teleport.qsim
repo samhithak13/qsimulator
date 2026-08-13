@@ -1,0 +1,25 @@
+# Quantum teleportation with classical feed-forward.
+# Run with:  cargo run -- programs/teleport.qsim
+#
+# The payload Ry(0.7)|0> starts on qubit 0 and ends on qubit 2. Qubits 0 and 1
+# are measured in the Bell basis, and the corrections below undo whichever
+# outcome came up -- so the sampled histogram is the payload's distribution on
+# qubit 2, whatever the controls read.
+
+qubits 3
+
+ry 0.7 0          # the state to teleport
+h 1               # Bell pair across qubits 1 and 2
+cnot 1 2
+
+cnot 0 1          # rotate qubits 0 and 1 into the Bell basis
+h 0
+measure 0         # qubit i is recorded in classical bit i
+measure 1
+
+if 2 x 2          # m1 set: undo the bit flip
+if 1 z 2          # m0 set: undo the phase flip
+if 3 x 2
+if 3 z 2
+
+sample 2000 7

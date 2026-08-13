@@ -146,6 +146,30 @@ fn bundled_ghz_example_parses() {
     assert_eq!(prog.circuit.run().n_qubits(), 3);
 }
 
+/// The bundled teleportation program moves the payload onto qubit 2 whatever
+/// the Bell measurement reads, so qubit 2's marginal must match the payload's
+/// regardless of which branch each shot took.
+#[test]
+fn bundled_teleport_example_teleports() {
+    let src = include_str!("../programs/teleport.qsim");
+    let prog = program::parse(src).expect("bundled example should parse");
+    let spec = prog.sample.expect("it declares a sample directive");
+
+    let hist = prog.circuit.sample(spec.shots, spec.seed);
+    let on_two: usize = hist
+        .iter()
+        .filter(|(state, _)| *state & 0b100 != 0)
+        .map(|(_, count)| count)
+        .sum();
+    // Payload is Ry(0.7)|0>, so P(|1>) = sin^2(0.35).
+    let expected = (0.7f64 / 2.0).sin().powi(2);
+    let measured = on_two as f64 / spec.shots as f64;
+    assert!(
+        (measured - expected).abs() < 0.03,
+        "qubit 2 read {measured:.4}, payload is {expected:.4}"
+    );
+}
+
 /// Every native instruction parses (exercises each builder arm).
 #[test]
 fn every_native_instruction_parses() {

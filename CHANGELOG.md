@@ -6,6 +6,14 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- The teleportation example is built with `Circuit` rather than the low-level
+  `State` API: the protocol needed classical feed-forward, which now exists.
+  It walks seeds until all four Bell outcomes have come up and checks each, so
+  a correction that is wrong for one branch cannot hide behind the others.
+- A bundled `programs/teleport.qsim` shows the same protocol in the text
+  format, so feed-forward is reachable from the CLI.
+
 ## [0.4.0] - 2026-08-13
 
 A circuit is no longer a sequence of unitaries. Mid-circuit measurement,

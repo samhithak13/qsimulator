@@ -40,6 +40,7 @@ cargo run --example ghz            # N-qubit GHZ state
 cargo run --example grover         # Grover search (found with certainty)
 cargo run --example qft            # quantum Fourier transform
 cargo run --example teleportation  # measurement + classical feed-forward
+cargo run -- programs/teleport.qsim # the same protocol as a program file
 ```
 
 ## What's here
