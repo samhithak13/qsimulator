@@ -335,3 +335,23 @@ fn reset_exports_and_round_trips() {
     let reimported = qasm::parse(&qasm).expect("should re-import");
     assert_eq!(reimported.sample(800, 12), c.sample(800, 12));
 }
+
+/// A conditional exports as `if(c==value)` on each guarded statement and
+/// round-trips — including when the guarded gate is one that decomposes.
+#[test]
+fn conditional_exports_and_round_trips() {
+    let mut c = Circuit::new(4);
+    c.h(0).measure(0);
+    c.if_classical_eq(1, |b| {
+        b.mcx(&[0, 1, 2], 3);
+    });
+
+    let qasm = c.to_qasm().expect("should export");
+    assert!(qasm.contains("creg c[4];"), "{qasm}");
+    // Every line of the decomposition is guarded, not just the first.
+    let guarded = qasm.lines().filter(|l| l.starts_with("if(c==1) ")).count();
+    assert!(guarded > 1, "expected the whole block guarded:\n{qasm}");
+
+    let reimported = qasm::parse(&qasm).expect("should re-import");
+    assert_eq!(reimported.sample(600, 8), c.sample(600, 8));
+}

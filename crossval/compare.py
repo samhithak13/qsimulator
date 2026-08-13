@@ -8,11 +8,12 @@ Two phases, each run for `--trials` random circuits:
     CLI, which prints the final amplitudes as JSON) and Qiskit's reference
     `Statevector`. This checks that the two engines agree gate for gate.
 
-  * **measure** — generate a random program containing a *mid-circuit*
-    measurement, and compare qsimulator's sampled distribution against Qiskit
-    Aer's over the exported program. A circuit whose state collapses partway
-    has no single state vector, so this is the only phase that can check it;
-    the comparison is statistical, over total variation distance.
+  * **measure** — generate a random program that collapses partway through —
+    a mid-circuit measurement or reset, and sometimes classical feed-forward
+    (`if`) — and compare qsimulator's sampled distribution against Qiskit
+    Aer's. A circuit whose state collapses partway has no single state vector,
+    so this is the only phase that can check it; the comparison is statistical,
+    over total variation distance.
 
   * **export** — generate a random program in qsimulator's native text format,
     including multi-controlled gates that OpenQASM 2 has no way to write
@@ -226,6 +227,34 @@ def total_variation(a: dict[str, float], b: dict[str, float]) -> float:
     return 0.5 * sum(abs(a.get(k, 0.0) - b.get(k, 0.0)) for k in set(a) | set(b))
 
 
+def random_conditional_qasm(n_qubits: int, rng: random.Random) -> str:
+    """A random OpenQASM program that measures, then guards gates on the result.
+
+    Written as OpenQASM rather than the native format because `if` has no
+    native-format spelling: both engines read the same source, so this checks
+    the importer and the conditional execution rather than the export path.
+    """
+    lines = [
+        "OPENQASM 2.0;",
+        'include "qelib1.inc";',
+        f"qreg q[{n_qubits}];",
+        f"creg c[{n_qubits}];",
+    ]
+    # Superpose and measure a couple of qubits so the guard value varies.
+    deciders = rng.sample(range(n_qubits), min(2, n_qubits))
+    for q in deciders:
+        lines.append(f"h q[{q}];")
+        lines.append(f"measure q[{q}] -> c[{q}];")
+    # Guard gates on values that do and do not occur, so both branches matter.
+    for _ in range(rng.randint(1, 3)):
+        value = rng.randrange(1 << n_qubits)
+        target = rng.randrange(n_qubits)
+        gate = rng.choice(["x", "h", "z", "sx"])
+        lines.append(f"if(c=={value}) {gate} q[{target}];")
+    lines.append("measure q -> c;")
+    return "\n".join(lines) + "\n"
+
+
 def qsim(args: list[str], program: str, binary: str) -> str:
     result = subprocess.run(
         [binary, *args, "-"],
@@ -343,12 +372,17 @@ def run_measure_phase(args, binary: str, rng: random.Random) -> float | None:
     trials = max(1, args.trials // 10)
     for trial in range(trials):
         n_qubits = rng.randint(2, min(4, args.max_qubits))
-        program = random_measured_program(n_qubits, rng.randint(2, 3 * n_qubits), rng)
-        exported = qsim(["--emit-qasm"], program, binary)
         seed = rng.randrange(1 << 30)
+        if rng.random() < 0.4:
+            # Classical feed-forward: both engines read the same OpenQASM.
+            program = random_conditional_qasm(n_qubits, rng)
+            source_for_aer = program
+        else:
+            program = random_measured_program(n_qubits, rng.randint(2, 3 * n_qubits), rng)
+            source_for_aer = qsim(["--emit-qasm"], program, binary)
 
         mine = qsim_counts(program, binary, args.shots, seed)
-        theirs = aer_counts(exported, args.shots, seed)
+        theirs = aer_counts(source_for_aer, args.shots, seed)
         distance = total_variation(mine, theirs)
         worst = max(worst, distance)
         if distance > args.measure_tol:
@@ -356,7 +390,7 @@ def run_measure_phase(args, binary: str, rng: random.Random) -> float | None:
                 f"FAIL (measure trial {trial}): total variation {distance:.4f} "
                 f"exceeds {args.measure_tol:g}"
             )
-            print(f"{program}\n--- exported as ---\n{exported}")
+            print(f"{program}\n--- as Aer read it ---\n{source_for_aer}")
             print(f"qsimulator {mine}\naer        {theirs}")
             return None
     return worst

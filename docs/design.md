@@ -187,11 +187,49 @@ compares re-imported amplitudes elementwise. The single exception is an `mcu`
 with *no* controls, where the phase is genuinely global and OpenQASM 2 has no
 way to write it.
 
+## Measurement and classical control
+
+`Circuit` is no longer a sequence of unitaries. Three operations collapse the
+state, and all three make execution depend on the RNG stream, which
+`run_seeded` chooses:
+
+- `measure(q)` collapses `q` and records the outcome in the circuit's one
+  classical register, which is as wide as the quantum register — bit `i` is the
+  last outcome written to bit `i`, and unmeasured bits read 0. `measure_into`
+  picks a different destination bit, which an imported program needs when it
+  compacts measurements into low bits.
+- `reset(q)` collapses `q` and forces it to |0>.
+- `if_classical_eq(value, ...)` runs a block of gates only when the whole
+  classical register equals `value` — OpenQASM's `if`.
+
+Two consequences are load-bearing:
+
+- **Trailing measurements are readout.** Nothing follows them, so collapsing
+  would discard the prepared state and report one arbitrary branch, and since
+  nearly every written-out program ends in a measurement that would make `run`
+  seed-dependent for almost every real file. Sampling draws the same
+  distribution either way. A trailing *reset* is not readout: it changes the
+  state that gets sampled.
+- **`sample` re-runs the circuit per shot** when a collapse can affect what
+  follows, because there is no single final state to draw from. Otherwise it
+  keeps the cheap path of running once and measuring clones.
+
+A conditional block holds only gates. A measurement inside one would change the
+value being tested part-way through, so guarding each statement — all
+OpenQASM's single-statement `if` can express — would stop matching the block as
+a whole; a nested conditional has no OpenQASM form at all. Both panic rather
+than being dropped.
+
+None of this can be checked by comparing state vectors, since a branching
+circuit has none. The third `crossval` phase samples against Qiskit Aer
+instead; see `crossval/README.md` for why its generator is shaped the way it is.
+
 ## Roadmap
 
-Nothing outstanding. The OpenQASM bridge is complete in both directions:
-every builder gate exports, and every gate Qiskit emits — including `gate`
-declarations and the whole of `qelib1` — imports.
+Nothing outstanding. The OpenQASM bridge is complete in both directions: every
+builder gate exports, and every gate Qiskit emits — including `gate`
+declarations and the whole of `qelib1` — imports. `measure`, `reset` and `if`
+are all honoured, leaving only `opaque`, which declares no body to simulate.
 
 ### Not planned: a SIMD fast path
 

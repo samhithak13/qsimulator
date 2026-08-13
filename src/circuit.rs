@@ -64,6 +64,7 @@ enum Op {
     /// in the supported subset can read one back.
     Measure {
         qubit: usize,
+        clbit: usize,
     },
     /// Collapse `qubit` and force it to |0>, leaving the rest of the register
     /// on whichever branch the collapse took.
@@ -75,6 +76,13 @@ enum Op {
         controls: Vec<usize>,
         target: usize,
         label: &'static str,
+    },
+    /// Gates that run only when the whole classical register equals `value`.
+    /// The block holds no measurement or reset, so `value` cannot change
+    /// while it executes.
+    Conditional {
+        value: u64,
+        ops: Vec<Op>,
     },
 }
 
@@ -92,6 +100,21 @@ impl Circuit {
             n_qubits,
             ops: Vec::new(),
         }
+    }
+
+    /// How many qubits the circuit acts on.
+    pub fn n_qubits(&self) -> usize {
+        self.n_qubits
+    }
+
+    /// Append another circuit's operations to this one.
+    ///
+    /// Both must be over the same number of qubits. Used by the OpenQASM
+    /// importer to build a guarded statement in isolation — so its operands
+    /// resolve and its errors surface — before folding it into a conditional.
+    pub(crate) fn extend_from(&mut self, other: &Circuit) {
+        debug_assert_eq!(self.n_qubits, other.n_qubits);
+        self.ops.extend(other.ops.iter().cloned());
     }
 
     /// Hadamard gate on `target`.
@@ -476,13 +499,65 @@ impl Circuit {
     /// collapse is what makes a later gate see a definite state rather than a
     /// superposition.
     pub fn measure(&mut self, qubit: usize) -> &mut Self {
-        self.ops.push(Op::Measure { qubit });
+        self.measure_into(qubit, qubit)
+    }
+
+    /// Measure `qubit`, recording the outcome in classical bit `clbit`.
+    ///
+    /// The circuit has one classical register, as wide as the quantum one, and
+    /// [`measure`](Circuit::measure) writes qubit `i` to bit `i`. Use this when
+    /// the destination differs — an imported program may compact several
+    /// measurements into low bits.
+    pub fn measure_into(&mut self, qubit: usize, clbit: usize) -> &mut Self {
+        self.ops.push(Op::Measure { qubit, clbit });
+        self
+    }
+
+    /// Run `build`'s gates only when the classical register equals `value`.
+    ///
+    /// This is OpenQASM's `if (c == value)`. The register is the one written by
+    /// [`measure`](Circuit::measure), compared as a whole: bit `i` is the last
+    /// outcome recorded for classical bit `i`, and unmeasured bits read 0.
+    ///
+    /// # Panics
+    ///
+    /// The block may only contain gates. A measurement or reset inside it would
+    /// change the value being tested part-way through, so guarding each
+    /// statement — which is all OpenQASM's single-statement `if` can express —
+    /// would stop matching the block as a whole; and a nested conditional has
+    /// no OpenQASM form at all. Rather than drop such an operation and quietly
+    /// simulate something else, this panics.
+    pub fn if_classical_eq(&mut self, value: u64, build: impl FnOnce(&mut Circuit)) -> &mut Self {
+        let mut inner = Circuit::new(self.n_qubits);
+        build(&mut inner);
+        for op in &inner.ops {
+            let kind = match op {
+                Op::Measure { .. } => "a measurement",
+                Op::Reset { .. } => "a reset",
+                Op::Conditional { .. } => "a nested conditional",
+                _ => continue,
+            };
+            panic!("a conditional block may only contain gates, but it contains {kind}");
+        }
+        if !inner.ops.is_empty() {
+            self.ops.push(Op::Conditional {
+                value,
+                ops: inner.ops,
+            });
+        }
         self
     }
 
     /// Whether the circuit measures at all.
     fn has_measurement(&self) -> bool {
         self.ops.iter().any(|op| matches!(op, Op::Measure { .. }))
+    }
+
+    /// Whether the circuit reads the classical register.
+    fn has_conditional(&self) -> bool {
+        self.ops
+            .iter()
+            .any(|op| matches!(op, Op::Conditional { .. }))
     }
 
     /// Whether the circuit contains a reset, which always branches — even as
@@ -543,40 +618,82 @@ impl Circuit {
     /// stochastic circuit draw from one stream rather than restarting it.
     fn run_with(&self, rng: &mut Rng) -> State {
         let mut state = State::new(self.n_qubits);
+        // The circuit's one classical register: bit `i` is the last outcome
+        // recorded for classical bit `i`, and unmeasured bits read 0.
+        let mut clbits: u64 = 0;
         // Trailing measurements are readout: nothing follows them, so
         // collapsing would only discard the prepared state and make the result
         // depend on the seed. `sample` draws the same distribution either way.
         let executable = self.ops.len() - self.trailing_measurements();
         for op in &self.ops[..executable] {
-            match op {
-                Op::Measure { qubit } => {
-                    state.measure_qubit(*qubit, rng);
-                }
-                // Collapse, then flip the |1> branch back down to |0>.
-                Op::Reset { qubit } => {
-                    if state.measure_qubit(*qubit, rng) {
-                        state.apply_1q(&gates::x(), *qubit);
-                    }
-                }
-                Op::Single { gate, target, .. } => state.apply_1q(gate, *target),
-                Op::Controlled {
-                    gate,
-                    control,
-                    target,
-                    ..
-                } => state.apply_controlled_1q(gate, *control, *target),
-                Op::Swap { a, b } => state.swap_qubits(*a, *b),
-                Op::MultiControlled {
-                    gate,
-                    controls,
-                    target,
-                    ..
-                } => state.apply_multi_controlled_1q(gate, controls, *target),
-            }
+            apply_op(&mut state, op, rng, &mut clbits);
         }
         state
     }
+}
 
+impl Op {
+    /// The qubit a diagram should mark for this operation — its target, or the
+    /// first of a pair. Used only to draw a conditional block in one column.
+    fn primary_qubit(&self) -> Option<usize> {
+        match self {
+            Op::Single { target, .. } => Some(*target),
+            Op::Controlled { target, .. } => Some(*target),
+            Op::MultiControlled { target, .. } => Some(*target),
+            Op::Swap { a, .. } => Some(*a),
+            Op::Measure { qubit, .. } | Op::Reset { qubit } => Some(*qubit),
+            Op::Conditional { .. } => None,
+        }
+    }
+}
+
+/// Apply one operation, updating the state and the classical register.
+fn apply_op(state: &mut State, op: &Op, rng: &mut Rng, clbits: &mut u64) {
+    match op {
+        Op::Measure { qubit, clbit } => {
+            assert!(
+                *clbit < state.n_qubits(),
+                "classical bit {clbit} out of range"
+            );
+            let outcome = state.measure_qubit(*qubit, rng);
+            let mask = 1u64 << clbit;
+            if outcome {
+                *clbits |= mask;
+            } else {
+                *clbits &= !mask;
+            }
+        }
+        // Collapse, then flip the |1> branch back down to |0>.
+        Op::Reset { qubit } => {
+            if state.measure_qubit(*qubit, rng) {
+                state.apply_1q(&gates::x(), *qubit);
+            }
+        }
+        Op::Conditional { value, ops } => {
+            if *clbits == *value {
+                for inner in ops {
+                    apply_op(state, inner, rng, clbits);
+                }
+            }
+        }
+        Op::Single { gate, target, .. } => state.apply_1q(gate, *target),
+        Op::Controlled {
+            gate,
+            control,
+            target,
+            ..
+        } => state.apply_controlled_1q(gate, *control, *target),
+        Op::Swap { a, b } => state.swap_qubits(*a, *b),
+        Op::MultiControlled {
+            gate,
+            controls,
+            target,
+            ..
+        } => state.apply_multi_controlled_1q(gate, controls, *target),
+    }
+}
+
+impl Circuit {
     /// Run the circuit `shots` times and return a histogram of measured
     /// basis-state outcomes.
     ///
@@ -640,97 +757,120 @@ impl Circuit {
     pub fn to_qasm(&self) -> Result<String, ExportError> {
         let mut out = String::from("OPENQASM 2.0;\ninclude \"qelib1.inc\";\n");
         out.push_str(&format!("qreg q[{}];\n", self.n_qubits));
-        if self.has_measurement() {
+        if self.has_measurement() || self.has_conditional() {
             out.push_str(&format!("creg c[{}];\n", self.n_qubits));
         }
 
         for op in &self.ops {
-            match op {
-                Op::Single {
-                    target,
-                    label,
-                    params,
-                    ..
-                } => {
-                    let name = match *label {
-                        "I" => "id",
-                        "H" => "h",
-                        "X" => "x",
-                        "Y" => "y",
-                        "Z" => "z",
-                        "S" => "s",
-                        "T" => "t",
-                        "SDG" => "sdg",
-                        "SX" => "sx",
-                        "SXDG" => "sxdg",
-                        "TDG" => "tdg",
-                        "P" => "u1",
-                        "U2" => "u2",
-                        "U3" => "u3",
-                        "RX" => "rx",
-                        "RY" => "ry",
-                        "RZ" => "rz",
-                        other => return Err(ExportError::SingleGate { label: other }),
-                    };
-                    out.push_str(&format!("{name}{} q[{target}];\n", format_params(params)));
-                }
-                Op::Controlled {
-                    gate,
-                    control,
-                    target,
-                    label,
-                    params,
-                } => {
-                    match *label {
-                        "X" => out.push_str(&format!("cx q[{control}],q[{target}];\n")),
-                        "Y" => out.push_str(&format!("cy q[{control}],q[{target}];\n")),
-                        "Z" => out.push_str(&format!("cz q[{control}],q[{target}];\n")),
-                        "H" => out.push_str(&format!("ch q[{control}],q[{target}];\n")),
-                        "CRZ" | "CP" | "CU3" => {
-                            let name = match *label {
-                                "CRZ" => "crz",
-                                "CP" => "cu1",
-                                _ => "cu3",
-                            };
-                            out.push_str(&format!(
-                                "{name}{} q[{control}],q[{target}];\n",
-                                format_params(params)
-                            ));
-                        }
-                        // Any other controlled single-qubit unitary (e.g. `cu`
-                        // with an arbitrary matrix): decompose into a phase on
-                        // the control followed by a controlled-U3.
-                        _ => emit_controlled_u(&mut out, gate, *control, *target),
-                    }
-                }
-                Op::Swap { a, b } => {
-                    out.push_str(&format!("swap q[{a}],q[{b}];\n"));
-                }
-                // The classical bit is not modelled, so each measurement gets
-                // its own bit, named after the qubit it came from.
-                Op::Measure { qubit } => {
-                    out.push_str(&format!("measure q[{qubit}] -> c[{qubit}];\n"));
-                }
-                Op::Reset { qubit } => {
-                    out.push_str(&format!("reset q[{qubit}];\n"));
-                }
-                Op::MultiControlled {
-                    gate,
-                    controls,
-                    target,
-                    label,
-                } => {
-                    if *label == "X" {
-                        emit_mcx(&mut out, self.n_qubits, controls, *target);
-                    } else {
-                        emit_mcu(&mut out, self.n_qubits, gate, controls, *target);
-                    }
-                }
-            }
+            emit_op(&mut out, self.n_qubits, op)?;
         }
         Ok(out)
     }
+}
 
+/// Emit one operation's OpenQASM statements.
+fn emit_op(out: &mut String, n_qubits: usize, op: &Op) -> Result<(), ExportError> {
+    {
+        match op {
+            Op::Single {
+                target,
+                label,
+                params,
+                ..
+            } => {
+                let name = match *label {
+                    "I" => "id",
+                    "H" => "h",
+                    "X" => "x",
+                    "Y" => "y",
+                    "Z" => "z",
+                    "S" => "s",
+                    "T" => "t",
+                    "SDG" => "sdg",
+                    "SX" => "sx",
+                    "SXDG" => "sxdg",
+                    "TDG" => "tdg",
+                    "P" => "u1",
+                    "U2" => "u2",
+                    "U3" => "u3",
+                    "RX" => "rx",
+                    "RY" => "ry",
+                    "RZ" => "rz",
+                    other => return Err(ExportError::SingleGate { label: other }),
+                };
+                out.push_str(&format!("{name}{} q[{target}];\n", format_params(params)));
+            }
+            Op::Controlled {
+                gate,
+                control,
+                target,
+                label,
+                params,
+            } => {
+                match *label {
+                    "X" => out.push_str(&format!("cx q[{control}],q[{target}];\n")),
+                    "Y" => out.push_str(&format!("cy q[{control}],q[{target}];\n")),
+                    "Z" => out.push_str(&format!("cz q[{control}],q[{target}];\n")),
+                    "H" => out.push_str(&format!("ch q[{control}],q[{target}];\n")),
+                    "CRZ" | "CP" | "CU3" => {
+                        let name = match *label {
+                            "CRZ" => "crz",
+                            "CP" => "cu1",
+                            _ => "cu3",
+                        };
+                        out.push_str(&format!(
+                            "{name}{} q[{control}],q[{target}];\n",
+                            format_params(params)
+                        ));
+                    }
+                    // Any other controlled single-qubit unitary (e.g. `cu`
+                    // with an arbitrary matrix): decompose into a phase on
+                    // the control followed by a controlled-U3.
+                    _ => emit_controlled_u(out, gate, *control, *target),
+                }
+            }
+            Op::Swap { a, b } => {
+                out.push_str(&format!("swap q[{a}],q[{b}];\n"));
+            }
+            // The classical bit is not modelled, so each measurement gets
+            // its own bit, named after the qubit it came from.
+            Op::Measure { qubit, clbit } => {
+                out.push_str(&format!("measure q[{qubit}] -> c[{clbit}];\n"));
+            }
+            Op::Reset { qubit } => {
+                out.push_str(&format!("reset q[{qubit}];\n"));
+            }
+            Op::MultiControlled {
+                gate,
+                controls,
+                target,
+                label,
+            } => {
+                if *label == "X" {
+                    emit_mcx(out, n_qubits, controls, *target);
+                } else {
+                    emit_mcu(out, n_qubits, gate, controls, *target);
+                }
+            }
+            // OpenQASM guards a single statement, so render the block and
+            // prefix every line it produced. The condition cannot change
+            // inside the block, so guarding each line is the same as
+            // guarding the whole.
+            Op::Conditional { value, ops } => {
+                let mut block = String::new();
+                for inner in ops {
+                    emit_op(&mut block, n_qubits, inner)?;
+                }
+                for line in block.lines() {
+                    out.push_str(&format!("if(c=={value}) {line}\n"));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+impl Circuit {
     /// Render the circuit as an ASCII diagram.
     ///
     /// One column per operation, time flowing left to right, with qubit `q0`
@@ -775,8 +915,17 @@ impl Circuit {
                     col[*b] = Some("x");
                     fill_connector(&mut col, &[*a, *b]);
                 }
-                Op::Measure { qubit } => {
+                Op::Measure { qubit, .. } => {
                     col[*qubit] = Some("M");
+                }
+                // The guarded gates share one column, marked to show they are
+                // conditional rather than unconditional.
+                Op::Conditional { ops, .. } => {
+                    for inner in ops {
+                        if let Some(q) = inner.primary_qubit() {
+                            col[q] = Some("?");
+                        }
+                    }
                 }
                 Op::Reset { qubit } => {
                     col[*qubit] = Some("R");

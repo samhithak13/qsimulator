@@ -216,12 +216,16 @@ fn error_unsupported_gate() {
 
 #[test]
 fn error_unsupported_feature() {
-    // `if` needs classical registers this engine does not model. (`reset` used
-    // to stand in here, before it became supported.)
-    let err = qasm::parse("qreg q[1];\ncreg c[1];\nif(c==1) x q[0];\n")
+    // `opaque` declares a gate with no body, so there is nothing to simulate.
+    // It is the last unsupported feature; `reset` and `if` each stood here
+    // before they were implemented.
+    let err = qasm::parse("qreg q[1];\nopaque mystery a;\n")
         .unwrap_err()
         .to_string();
-    assert!(err.contains("unsupported OpenQASM feature `if`"), "{err}");
+    assert!(
+        err.contains("unsupported OpenQASM feature `opaque`"),
+        "{err}"
+    );
 }
 
 #[test]
@@ -595,4 +599,71 @@ fn reset_imports() {
         .unwrap_err()
         .to_string();
     assert!(err.contains("unknown register"), "{err}");
+}
+
+/// `if (c == value)` guards a gate on the classical register, so a measurement
+/// can steer what happens next.
+#[test]
+fn conditional_imports() {
+    let src = "\
+OPENQASM 2.0;
+qreg q[2];
+creg c[2];
+h q[0];
+measure q[0] -> c[0];
+if(c==1) x q[1];
+measure q[1] -> c[1];
+";
+    let c = qasm::parse(src).expect("should parse");
+    let hist = c.sample(2000, 4);
+    // The conditional flip correlates the qubits: only 00 and 11 occur.
+    assert_eq!(hist.get(&0b01).copied().unwrap_or(0), 0);
+    assert_eq!(hist.get(&0b10).copied().unwrap_or(0), 0);
+}
+
+/// A measurement may name a classical bit other than its own index.
+#[test]
+fn measure_honours_the_classical_target() {
+    let src = "qreg q[2];\ncreg c[2];\nx q[1];\nmeasure q[1] -> c[0];\nif(c==1) x q[0];\n";
+    let state = qasm::parse(src).expect("should parse").run();
+    assert_relative_eq!(state.probability(0b11), 1.0, epsilon = 1e-12);
+}
+
+/// Malformed conditionals and unsupported shapes are named, not guessed at.
+#[test]
+fn conditional_errors() {
+    for (src, needle) in [
+        (
+            "qreg q[1];\ncreg c[1];\nif c==0 x q[0];\n",
+            "needs `(c==value)`",
+        ),
+        (
+            "qreg q[1];\ncreg c[1];\nif(c=0) x q[0];\n",
+            "compare with `==`",
+        ),
+        (
+            "qreg q[1];\ncreg c[1];\nif(d==0) x q[0];\n",
+            "unknown classical register",
+        ),
+        (
+            "qreg q[1];\ncreg c[1];\nif(c==x) x q[0];\n",
+            "non-negative integer",
+        ),
+        ("qreg q[1];\ncreg c[1];\nif(c==0)\n", "no statement"),
+        (
+            "qreg q[1];\ncreg c[1];\nif(c==0) measure q[0] -> c[0];\n",
+            "only a gate may be conditional",
+        ),
+        (
+            "qreg q[1];\ncreg c[4];\n",
+            "more than the 1 qubits this engine models",
+        ),
+        (
+            "qreg q[2];\ncreg c[2];\nmeasure q -> c[0];\n",
+            "onto 1 classical bit",
+        ),
+    ] {
+        let err = qasm::parse(src).unwrap_err().to_string();
+        assert!(err.contains(needle), "for `{src}`: {err}");
+    }
 }

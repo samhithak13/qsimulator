@@ -252,3 +252,84 @@ fn trailing_reset_still_applies() {
     assert_relative_eq!(c.run().probability(0), 1.0, epsilon = 1e-12);
     assert_eq!(c.sample(300, 1).get(&0).copied().unwrap_or(0), 300);
 }
+
+/// A conditional runs only when the classical register matches. Measuring
+/// qubit 0 into bit 0 and guarding on `c == 1` correlates the two qubits.
+#[test]
+fn conditional_fires_on_the_measured_value() {
+    let mut c = Circuit::new(2);
+    c.h(0).measure(0);
+    c.if_classical_eq(1, |b| {
+        b.x(1);
+    });
+    c.measure(1);
+
+    let hist = c.sample(2000, 4);
+    assert_eq!(hist.get(&0b01).copied().unwrap_or(0), 0);
+    assert_eq!(hist.get(&0b10).copied().unwrap_or(0), 0);
+    let both = hist.get(&0b00).copied().unwrap_or(0) + hist.get(&0b11).copied().unwrap_or(0);
+    assert_eq!(both, 2000);
+}
+
+/// Bits that were never measured read 0, so a guard on 0 fires and any other
+/// guard does not.
+#[test]
+fn unmeasured_classical_bits_read_zero() {
+    let mut fires = Circuit::new(1);
+    fires.if_classical_eq(0, |b| {
+        b.x(0);
+    });
+    assert_relative_eq!(fires.run().probability(1), 1.0, epsilon = 1e-12);
+
+    let mut quiet = Circuit::new(1);
+    quiet.if_classical_eq(1, |b| {
+        b.x(0);
+    });
+    assert_relative_eq!(quiet.run().probability(0), 1.0, epsilon = 1e-12);
+}
+
+/// The whole register is compared, so a guard can depend on several bits.
+#[test]
+fn conditional_compares_the_whole_register() {
+    let mut c = Circuit::new(3);
+    c.x(0).x(1).measure(0).measure(1);
+    c.if_classical_eq(0b11, |b| {
+        b.x(2);
+    });
+    assert_relative_eq!(c.run().probability(0b111), 1.0, epsilon = 1e-12);
+}
+
+/// `measure_into` sends the outcome to a chosen bit, which is what an imported
+/// program needs when it compacts measurements into low bits.
+#[test]
+fn measure_into_targets_a_chosen_bit() {
+    let mut c = Circuit::new(2);
+    c.x(1).measure_into(1, 0); // qubit 1 -> classical bit 0
+    c.if_classical_eq(1, |b| {
+        b.x(0);
+    });
+    assert_relative_eq!(c.run().probability(0b11), 1.0, epsilon = 1e-12);
+}
+
+/// A conditional block may only hold gates: anything else would change the
+/// value being tested part-way through, or have no OpenQASM form. Dropping it
+/// silently would simulate something other than what was written.
+#[test]
+#[should_panic(expected = "may only contain gates")]
+fn conditional_block_rejects_a_measurement() {
+    let mut c = Circuit::new(1);
+    c.if_classical_eq(0, |b| {
+        b.measure(0);
+    });
+}
+
+#[test]
+#[should_panic(expected = "nested conditional")]
+fn conditional_block_rejects_nesting() {
+    let mut c = Circuit::new(1);
+    c.if_classical_eq(0, |b| {
+        b.if_classical_eq(0, |inner| {
+            inner.x(0);
+        });
+    });
+}

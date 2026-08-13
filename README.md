@@ -173,7 +173,7 @@ import), and the rest of `qelib1.inc` (`u`, `u0`, `crx`, `cry`, `csx`, `cu`,
 `rxx`, `rzz`, `rccx`, `rc3x`, `c3x`, `c3sqrtx`, `c4x`) implemented natively,
 since `include` is ignored rather than honoured.
 Multiple `qreg`s map into one flat qubit space in declaration order;
-`creg`, `barrier`, and `measure` are accepted and ignored; anything outside
+`creg` and `barrier` are accepted and ignored; anything outside
 the subset is reported rather than silently mis-simulated.
 
 `Circuit::to_qasm()` (and `qsimulator --emit-qasm <FILE>`) writes a circuit

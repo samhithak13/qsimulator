@@ -6,7 +6,12 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Added
+- Classical feed-forward: `Circuit::if_classical_eq` and OpenQASM
+  `if (c == value) <gate>;` on import and export, plus `Circuit::measure_into`
+  and `Circuit::n_qubits`. The circuit has one classical register as wide as
+  the quantum one; `measure` writes qubit `i` to bit `i`, and declared `creg`s
+  share that bit space in declaration order. `if` was the last unsupported
+  OpenQASM 2 feature apart from `opaque`, which declares no body to simulate.
 - `reset`: `Circuit::reset`, the `reset Q` program instruction, OpenQASM
   `reset q[i];` and `reset q;` on import, and `reset` lines on export. It was
   previously rejected as unsupported; implementing measurement made it a

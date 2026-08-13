@@ -41,6 +41,10 @@
 //!   this engine's circuit representation can express.
 //!
 //! - `reset q[i];` and `reset q;` collapse a qubit and force it to |0>.
+//! - `if (c == value) <gate>;` runs a gate only when the classical register
+//!   equals `value`. This engine models one classical register as wide as the
+//!   quantum one, so all declared `creg`s share that bit space in declaration
+//!   order and their total may not exceed the qubit count.
 //!
 //! Anything else — `if`, `opaque` — is reported as an unsupported-feature
 //! error rather than silently mis-simulated.
@@ -97,6 +101,35 @@ fn parse_inner(src: &str) -> Result<Circuit, String> {
     }
     let mut circuit = Circuit::new(total);
 
+    // Classical registers share one flat bit space, the same way qregs do.
+    let mut cregs: HashMap<String, Reg> = HashMap::new();
+    let mut clbits = 0usize;
+    for stmt in &statements {
+        if keyword(stmt) == "creg" {
+            let (name, size) = parse_reg_decl(stmt.replacen("creg", "qreg", 1).as_str())?;
+            if cregs.contains_key(&name) {
+                return Err(format!("duplicate classical register `{name}`"));
+            }
+            // One classical register as wide as the quantum one is all this
+            // engine models, so the bits have to fit inside it.
+            if clbits + size > total {
+                return Err(format!(
+                    "classical registers total {} bits, more than the {total} qubits this \
+                     engine models",
+                    clbits + size
+                ));
+            }
+            cregs.insert(
+                name,
+                Reg {
+                    offset: clbits,
+                    size,
+                },
+            );
+            clbits += size;
+        }
+    }
+
     // Pass 2: collect `gate` declarations, so a call may precede its
     // declaration textually even though OpenQASM does not require that.
     let mut defs: HashMap<String, GateDef> = HashMap::new();
@@ -118,10 +151,11 @@ fn parse_inner(src: &str) -> Result<Circuit, String> {
             "OPENQASM" | "include" | "qreg" | "creg" | "barrier" | "gate" => continue,
             // A measurement collapses the register, so ignoring one would
             // silently give the wrong answer for anything that follows it.
-            "measure" => apply_measure(&mut circuit, stmt, &regs)?,
+            "measure" => apply_measure(&mut circuit, stmt, &regs, &cregs)?,
             "reset" => apply_reset(&mut circuit, stmt, &regs)?,
+            "if" => apply_if(&mut circuit, stmt, &regs, &cregs, &defs, &mut budget)?,
             // Features we deliberately reject rather than mis-simulate.
-            "opaque" | "if" => {
+            "opaque" => {
                 return Err(format!("unsupported OpenQASM feature `{}`", keyword(stmt)));
             }
             _ => apply_gate(&mut circuit, stmt, &regs, &defs, &mut budget)?,
@@ -282,6 +316,7 @@ fn apply_measure(
     circuit: &mut Circuit,
     stmt: &str,
     regs: &HashMap<String, Reg>,
+    cregs: &HashMap<String, Reg>,
 ) -> Result<(), String> {
     let rest = stmt
         .strip_prefix("measure")
@@ -294,9 +329,68 @@ fn apply_measure(
     }
     // `measure q[i] -> c[j]` measures one qubit; `measure q -> c` measures the
     // whole register, which is how most hand-written programs end.
-    for qubit in resolve_qubits(source.trim(), regs, stmt)? {
-        circuit.measure(qubit);
+    let qubits = resolve_qubits(source.trim(), regs, stmt)?;
+    let clbits = resolve_qubits(dest.trim(), cregs, stmt)?;
+    if qubits.len() != clbits.len() {
+        return Err(format!(
+            "measurement maps {} qubit(s) onto {} classical bit(s) in `{stmt}`",
+            qubits.len(),
+            clbits.len()
+        ));
     }
+    for (qubit, clbit) in qubits.into_iter().zip(clbits) {
+        circuit.measure_into(qubit, clbit);
+    }
+    Ok(())
+}
+
+/// Parse `if(c==value) <statement>` and record the guarded statement.
+fn apply_if(
+    circuit: &mut Circuit,
+    stmt: &str,
+    regs: &HashMap<String, Reg>,
+    cregs: &HashMap<String, Reg>,
+    defs: &HashMap<String, GateDef>,
+    budget: &mut usize,
+) -> Result<(), String> {
+    let rest = stmt
+        .strip_prefix("if")
+        .ok_or_else(|| format!("malformed conditional `{stmt}`"))?
+        .trim_start();
+    let close = rest
+        .find(')')
+        .ok_or_else(|| format!("conditional needs `(c==value)`: `{stmt}`"))?;
+    let condition = rest[..close].trim_start_matches('(').trim();
+    let (name, value) = condition
+        .split_once("==")
+        .ok_or_else(|| format!("conditional must compare with `==`: `{stmt}`"))?;
+    let name = name.trim();
+    if !cregs.contains_key(name) {
+        return Err(format!("unknown classical register `{name}` in `{stmt}`"));
+    }
+    let value: u64 = value
+        .trim()
+        .parse()
+        .map_err(|_| format!("conditional value must be a non-negative integer: `{stmt}`"))?;
+
+    // The guarded statement is an ordinary gate; build it in isolation so its
+    // operands resolve, then fold it into the conditional block.
+    let guarded = rest[close + 1..].trim();
+    if guarded.is_empty() {
+        return Err(format!("conditional has no statement: `{stmt}`"));
+    }
+    match keyword(guarded) {
+        "measure" | "reset" | "if" => {
+            return Err(format!(
+                "only a gate may be conditional, not `{}`, in `{stmt}`",
+                keyword(guarded)
+            ))
+        }
+        _ => {}
+    }
+    let mut block = Circuit::new(circuit.n_qubits());
+    apply_gate(&mut block, guarded, regs, defs, budget)?;
+    circuit.if_classical_eq(value, |c| c.extend_from(&block));
     Ok(())
 }
 
