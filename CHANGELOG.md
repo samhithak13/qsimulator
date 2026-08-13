@@ -6,6 +6,23 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- Noise channels, simulated by the quantum-trajectory method: each shot samples
+  one Kraus operator rather than carrying a density matrix, which fits the
+  existing per-shot re-run and keeps the state vector. New `noise` module with
+  `depolarizing`, `bit_flip`, `phase_flip`, `amplitude_damping` and
+  `phase_damping`, plus `is_trace_preserving`; `State::apply_kraus`;
+  `Circuit::channel` and a builder per channel; the same names as program
+  instructions. A single `run` is one trajectory, so noisy results need shots.
+- A fourth cross-validation phase comparing noisy circuits against Qiskit Aer.
+  A channel has no OpenQASM form, so it builds the Qiskit circuit from the same
+  op list rather than through a shared source file.
+
+### Changed
+- `ExportError` is `#[non_exhaustive]` and gains `Noise`: OpenQASM 2 has no
+  syntax for a channel, so a noisy circuit cannot be written out without
+  silently dropping the noise.
+
 ### Changed
 - The teleportation example is built with `Circuit` rather than the low-level
   `State` API: the protocol needed classical feed-forward, which now exists.

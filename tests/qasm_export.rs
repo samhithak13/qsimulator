@@ -355,3 +355,17 @@ fn conditional_exports_and_round_trips() {
     let reimported = qasm::parse(&qasm).expect("should re-import");
     assert_eq!(reimported.sample(600, 8), c.sample(600, 8));
 }
+
+/// A noise channel has no OpenQASM 2 form, so exporting one errors rather than
+/// writing out a circuit that quietly differs from the one that ran.
+#[test]
+fn noise_cannot_be_exported() {
+    let mut c = Circuit::new(1);
+    c.h(0).depolarizing(0.1, 0);
+    assert_eq!(c.to_qasm().unwrap_err(), ExportError::Noise);
+    assert!(c
+        .to_qasm()
+        .unwrap_err()
+        .to_string()
+        .contains("no syntax for one"));
+}

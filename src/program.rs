@@ -20,7 +20,8 @@
 //! `mcx C... T` and `mcu3 THETA PHI LAMBDA C... T`; `measure Q`, which
 //! collapses a qubit mid-circuit, `reset Q`, which forces it to |0>, and
 //! `if VALUE INSTRUCTION`, which guards one instruction on the classical
-//! register; and a terminal
+//! register; the noise channels `depolarizing/bit_flip/phase_flip/
+//! amplitude_damping/phase_damping P Q`; and a terminal
 //! `sample SHOTS SEED`. An angle is an arithmetic expression over numbers and
 //! `pi` — `0.7`, `pi`, `pi/2`, `-pi/4`, `2pi`, or `(pi/4 + 0.1)*2` — with the
 //! operators `+ - * / ^`, parentheses, and `sin`/`cos`/`tan`/`exp`/`ln`/`sqrt`.
@@ -242,6 +243,22 @@ fn apply_instruction(c: &mut Circuit, toks: &[&str], n: usize) -> Result<(), Str
             let lambda = parse_angle(toks.get(3).copied().unwrap_or(""))?;
             let (controls, tgt) = parse_control_list(toks, 4, n)?;
             c.mcu(crate::gates::u3(theta, phi, lambda), &controls, tgt);
+        }
+        // Noise channels: a probability (or damping rate) and a qubit.
+        "depolarizing" | "bit_flip" | "phase_flip" | "amplitude_damping" | "phase_damping" => {
+            expect_arity(toks, 3)?;
+            let p = parse_angle(toks[1])?;
+            if !(0.0..=1.0).contains(&p) {
+                return Err(format!("noise strength must be in 0..=1, got {p}"));
+            }
+            let q = parse_qubit(toks, 2, n)?;
+            match cmd {
+                "depolarizing" => c.depolarizing(p, q),
+                "bit_flip" => c.bit_flip(p, q),
+                "phase_flip" => c.phase_flip(p, q),
+                "amplitude_damping" => c.amplitude_damping(p, q),
+                _ => c.phase_damping(p, q),
+            };
         }
         "measure" | "reset" => {
             expect_arity(toks, 2)?;

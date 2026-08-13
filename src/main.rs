@@ -319,6 +319,8 @@ PROGRAM FORMAT (one instruction per line; `#` starts a comment):
     reset Q                    Collapse qubit Q and force it to |0>
     if VALUE INSTRUCTION       Run INSTRUCTION only if the classical register
                                equals VALUE (measure writes qubit i to bit i)
+    depolarizing|bit_flip|phase_flip|amplitude_damping|phase_damping P Q
+                               Noise channel on qubit Q with strength P
     sample SHOTS SEED          Sample the final state (optional, once)
 
 EXAMPLE (GHZ state):

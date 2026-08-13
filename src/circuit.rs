@@ -12,6 +12,7 @@ type Gate = [[Complex64; 2]; 2];
 /// Reason a circuit could not be exported to the OpenQASM 2.0 subset by
 /// [`Circuit::to_qasm`].
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ExportError {
     /// An arbitrary single-qubit gate with no OpenQASM name. Built-in gates
     /// never produce this; it can only arise from a manually built `Op`.
@@ -19,6 +20,10 @@ pub enum ExportError {
         /// The gate's diagram label.
         label: &'static str,
     },
+    /// A noise channel. OpenQASM 2 describes unitary circuits and measurement;
+    /// it has no syntax for a quantum channel, so a noisy circuit cannot be
+    /// written out without silently dropping the noise.
+    Noise,
 }
 
 impl fmt::Display for ExportError {
@@ -27,6 +32,9 @@ impl fmt::Display for ExportError {
             ExportError::SingleGate { label } => {
                 write!(f, "cannot export single-qubit gate `{label}` to OpenQASM 2")
             }
+            ExportError::Noise => f.write_str(
+                "cannot export a noise channel to OpenQASM 2, which has no syntax for one",
+            ),
         }
     }
 }
@@ -75,6 +83,12 @@ enum Op {
         gate: Gate,
         controls: Vec<usize>,
         target: usize,
+        label: &'static str,
+    },
+    /// A noise channel on `qubit`: one Kraus operator is sampled per shot.
+    Kraus {
+        ops: Vec<[[Complex64; 2]; 2]>,
+        qubit: usize,
         label: &'static str,
     },
     /// Gates that run only when the whole classical register equals `value`.
@@ -475,6 +489,66 @@ impl Circuit {
         self.mcx(&[control1, control2], target)
     }
 
+    /// Apply a noise channel to `qubit`, given as Kraus operators.
+    ///
+    /// The channel is simulated by sampling one operator per shot rather than
+    /// by carrying a density matrix, so a single [`run`](Circuit::run) is one
+    /// trajectory and averages come from [`sample`](Circuit::sample). See the
+    /// [`noise`](crate::noise) module for the standard channels and for what
+    /// that costs in shots.
+    ///
+    /// # Panics
+    ///
+    /// If `ops` is empty or not trace preserving, since a channel that is not
+    /// would quietly change the total probability.
+    pub fn channel(&mut self, ops: Vec<[[Complex64; 2]; 2]>, qubit: usize) -> &mut Self {
+        self.named_channel(ops, qubit, "N")
+    }
+
+    fn named_channel(
+        &mut self,
+        ops: Vec<[[Complex64; 2]; 2]>,
+        qubit: usize,
+        label: &'static str,
+    ) -> &mut Self {
+        assert!(
+            !ops.is_empty(),
+            "a channel needs at least one Kraus operator"
+        );
+        assert!(
+            crate::noise::is_trace_preserving(&ops),
+            "channel is not trace preserving (sum K^dagger K must be the identity)"
+        );
+        self.ops.push(Op::Kraus { ops, qubit, label });
+        self
+    }
+
+    /// Depolarizing noise on `qubit` with probability `p`.
+    pub fn depolarizing(&mut self, p: f64, qubit: usize) -> &mut Self {
+        self.named_channel(crate::noise::depolarizing(p), qubit, "DEP")
+    }
+
+    /// Bit-flip noise on `qubit`: X with probability `p`.
+    pub fn bit_flip(&mut self, p: f64, qubit: usize) -> &mut Self {
+        self.named_channel(crate::noise::bit_flip(p), qubit, "BF")
+    }
+
+    /// Phase-flip noise on `qubit`: Z with probability `p`.
+    pub fn phase_flip(&mut self, p: f64, qubit: usize) -> &mut Self {
+        self.named_channel(crate::noise::phase_flip(p), qubit, "PF")
+    }
+
+    /// Amplitude damping on `qubit` with probability `gamma` (T1 relaxation).
+    pub fn amplitude_damping(&mut self, gamma: f64, qubit: usize) -> &mut Self {
+        self.named_channel(crate::noise::amplitude_damping(gamma), qubit, "AD")
+    }
+
+    /// Phase damping on `qubit` with probability `gamma`: coherence decays
+    /// while populations stay put.
+    pub fn phase_damping(&mut self, gamma: f64, qubit: usize) -> &mut Self {
+        self.named_channel(crate::noise::phase_damping(gamma), qubit, "PD")
+    }
+
     /// Reset `qubit` to |0>, whatever state it was in.
     ///
     /// This is a collapse followed by a flip if the outcome was |1>, so it is
@@ -560,10 +634,13 @@ impl Circuit {
             .any(|op| matches!(op, Op::Conditional { .. }))
     }
 
-    /// Whether the circuit contains a reset, which always branches — even as
-    /// the final operation, since it changes the state that is sampled.
+    /// Whether the circuit contains a reset or a noise channel. Both always
+    /// branch — even as the final operation, since both change the state that
+    /// is sampled.
     fn has_reset(&self) -> bool {
-        self.ops.iter().any(|op| matches!(op, Op::Reset { .. }))
+        self.ops
+            .iter()
+            .any(|op| matches!(op, Op::Reset { .. } | Op::Kraus { .. }))
     }
 
     /// How many of the final operations are measurements — the circuit's
@@ -641,7 +718,9 @@ impl Op {
             Op::Controlled { target, .. } => Some(*target),
             Op::MultiControlled { target, .. } => Some(*target),
             Op::Swap { a, .. } => Some(*a),
-            Op::Measure { qubit, .. } | Op::Reset { qubit } => Some(*qubit),
+            Op::Measure { qubit, .. } | Op::Reset { qubit } | Op::Kraus { qubit, .. } => {
+                Some(*qubit)
+            }
             Op::Conditional { .. } => None,
         }
     }
@@ -668,6 +747,9 @@ fn apply_op(state: &mut State, op: &Op, rng: &mut Rng, clbits: &mut u64) {
             if state.measure_qubit(*qubit, rng) {
                 state.apply_1q(&gates::x(), *qubit);
             }
+        }
+        Op::Kraus { ops, qubit, .. } => {
+            state.apply_kraus(ops, *qubit, rng);
         }
         Op::Conditional { value, ops } => {
             if *clbits == *value {
@@ -840,6 +922,9 @@ fn emit_op(out: &mut String, n_qubits: usize, op: &Op) -> Result<(), ExportError
             Op::Reset { qubit } => {
                 out.push_str(&format!("reset q[{qubit}];\n"));
             }
+            // OpenQASM 2 has no syntax for a channel; writing the circuit out
+            // without it would silently export a different circuit.
+            Op::Kraus { .. } => return Err(ExportError::Noise),
             Op::MultiControlled {
                 gate,
                 controls,
@@ -929,6 +1014,9 @@ impl Circuit {
                 }
                 Op::Reset { qubit } => {
                     col[*qubit] = Some("R");
+                }
+                Op::Kraus { qubit, label, .. } => {
+                    col[*qubit] = Some(label);
                 }
                 Op::MultiControlled {
                     controls,

@@ -224,12 +224,47 @@ None of this can be checked by comparing state vectors, since a branching
 circuit has none. The third `crossval` phase samples against Qiskit Aer
 instead; see `crossval/README.md` for why its generator is shaped the way it is.
 
+## Noise
+
+A noise channel maps a density matrix to `sum_i K_i rho K_i^dagger`. This
+engine stores a state vector, so channels are simulated by the
+**quantum-trajectory** method instead: each shot samples one Kraus operator
+`K_i` with probability `<psi|K_i^dagger K_i|psi>` and renormalizes
+(`State::apply_kraus`). Averaged over shots the ensemble reproduces the density
+matrix.
+
+This fits the existing machinery rather than needing new machinery: `sample`
+already re-runs the circuit per shot with one RNG stream, which is exactly the
+structure trajectories need. The cost is statistical — a single `run` is one
+trajectory, not the average, and results converge as `1/sqrt(shots)`. A density
+matrix would give exact answers in one pass at the price of squaring the memory,
+from `2^n` amplitudes to `2^n x 2^n`.
+
+Branch probabilities are computed as `<psi|K^dagger K|psi>` in a single
+read-only pass (`State::expectation_1q`), so a channel costs no clone of the
+state vector — which the obvious implementation, applying each `K_i` to a copy
+to measure its norm, would need once per operator.
+
+Channels are rejected at build time unless they are trace preserving
+(`noise::is_trace_preserving`), since a set that is not would silently change
+the total probability. Noise also makes a circuit stochastic in the same way a
+reset does: it always branches, even as the final operation.
+
+OpenQASM 2 has no syntax for a channel, so exporting a noisy circuit returns
+`ExportError::Noise` rather than writing out a circuit that quietly differs
+from the one that ran. That is also why the noise cross-validation phase builds
+its Qiskit circuit directly instead of sharing a source file.
+
 ## Roadmap
 
 Nothing outstanding. The OpenQASM bridge is complete in both directions: every
 builder gate exports, and every gate Qiskit emits — including `gate`
 declarations and the whole of `qelib1` — imports. `measure`, `reset` and `if`
 are all honoured, leaving only `opaque`, which declares no body to simulate.
+
+Noise is simulated by trajectories. A density-matrix backend would make noisy
+results exact rather than sampled, at `2^n x 2^n` memory; worth it only if
+exactness at small `n` matters more than reach.
 
 ### Not planned: a SIMD fast path
 

@@ -226,6 +226,74 @@ impl State {
         self.amps.iter().map(|c| c.norm_sqr()).sum()
     }
 
+    /// Expectation `<psi|M|psi>` of a single-qubit Hermitian `m` on qubit `q`.
+    ///
+    /// One read-only pass over the amplitudes, so a Kraus branch probability
+    /// costs no allocation and no clone of the state vector.
+    fn expectation_1q(&self, m: &[[Complex64; 2]; 2], q: usize) -> f64 {
+        let mask = 1usize << q;
+        let mut total = 0.0;
+        for (i, a0) in self.amps.iter().enumerate() {
+            if i & mask != 0 {
+                continue;
+            }
+            let a1 = self.amps[i | mask];
+            let v0 = m[0][0] * a0 + m[0][1] * a1;
+            let v1 = m[1][0] * a0 + m[1][1] * a1;
+            // `m` is Hermitian, so this is real; the imaginary part is rounding.
+            total += (a0.conj() * v0 + a1.conj() * v1).re;
+        }
+        total
+    }
+
+    /// Apply a quantum channel to `q` by sampling one Kraus operator, returning
+    /// which one was taken.
+    ///
+    /// This is the quantum-trajectory (Monte Carlo wave function) method: a
+    /// channel that would otherwise need a density matrix is simulated by
+    /// choosing operator `K_i` with probability `<psi|K_i^dagger K_i|psi>` and
+    /// renormalizing. Averaged over shots the ensemble reproduces the density
+    /// matrix, so a state vector suffices — at the cost of needing many shots.
+    ///
+    /// `ops` should be trace preserving; see
+    /// [`noise::is_trace_preserving`](crate::noise::is_trace_preserving). The
+    /// probabilities are normalized before sampling regardless, so a set that
+    /// is slightly off from rounding still behaves.
+    pub fn apply_kraus(&mut self, ops: &[[[Complex64; 2]; 2]], q: usize, rng: &mut Rng) -> usize {
+        assert!(q < self.n_qubits, "qubit out of range");
+        assert!(
+            !ops.is_empty(),
+            "a channel needs at least one Kraus operator"
+        );
+
+        let probs: Vec<f64> = ops
+            .iter()
+            .map(|k| self.expectation_1q(&dagger_product(k), q).max(0.0))
+            .collect();
+        let total: f64 = probs.iter().sum();
+        assert!(total > 0.0, "channel has zero probability on this state");
+
+        // Walk the cumulative distribution to pick a branch.
+        let mut r = rng.next_f64() * total;
+        let mut chosen = probs.len() - 1;
+        for (i, p) in probs.iter().enumerate() {
+            if r < *p {
+                chosen = i;
+                break;
+            }
+            r -= p;
+        }
+
+        self.apply_1q(&ops[chosen], q);
+        // The chosen branch carried probability `probs[chosen]`; scale back to
+        // a unit vector.
+        let scale = 1.0 / probs[chosen].sqrt();
+        for a in self.amps.iter_mut() {
+            *a *= scale;
+        }
+        chosen
+    }
+
     /// Probability that qubit `q` is measured in the |1> state.
     ///
     /// This is the sum of `|amplitude|^2` over every basis state whose
@@ -307,4 +375,11 @@ impl State {
         }
         outcome
     }
+}
+
+/// `K^dagger K` for a 2x2 operator — the positive matrix whose expectation on
+/// the state is the probability of taking that Kraus branch.
+fn dagger_product(k: &[[Complex64; 2]; 2]) -> [[Complex64; 2]; 2] {
+    let entry = |i: usize, j: usize| k[0][i].conj() * k[0][j] + k[1][i].conj() * k[1][j];
+    [[entry(0, 0), entry(0, 1)], [entry(1, 0), entry(1, 1)]]
 }

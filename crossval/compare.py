@@ -15,6 +15,12 @@ Two phases, each run for `--trials` random circuits:
     so this is the only phase that can check it; the comparison is statistical,
     over total variation distance.
 
+  * **noise** — generate a random circuit containing noise channels and compare
+    both engines' sampled distributions. A channel has no OpenQASM form, so the
+    Qiskit circuit is built directly from the same op list rather than through a
+    shared source file; qsimulator samples trajectories where Aer applies the
+    channel its own way.
+
   * **export** — generate a random program in qsimulator's native text format,
     including multi-controlled gates that OpenQASM 2 has no way to write
     directly. qsimulator runs it, while Qiskit runs the program as qsimulator
@@ -260,6 +266,86 @@ def random_conditional_qasm(n_qubits: int, rng: random.Random) -> str:
     return "\n".join(lines) + "\n"
 
 
+# Noise channels, as (native instruction name, Kraus builder). Neither
+# OpenQASM nor the export path can carry a channel, so this phase builds the
+# Qiskit circuit programmatically instead of going through a shared source.
+CHANNELS = ["depolarizing", "bit_flip", "phase_flip", "amplitude_damping", "phase_damping"]
+
+
+def kraus_matrices(name: str, p: float) -> list:
+    """The same Kraus operators qsimulator uses, written out independently."""
+    identity = np.eye(2)
+    x = np.array([[0, 1], [1, 0]])
+    y = np.array([[0, -1j], [1j, 0]])
+    z = np.diag([1, -1])
+    if name == "bit_flip":
+        return [np.sqrt(1 - p) * identity, np.sqrt(p) * x]
+    if name == "phase_flip":
+        return [np.sqrt(1 - p) * identity, np.sqrt(p) * z]
+    if name == "depolarizing":
+        e = np.sqrt(p / 3)
+        return [np.sqrt(1 - p) * identity, e * x, e * y, e * z]
+    if name == "amplitude_damping":
+        return [np.array([[1, 0], [0, np.sqrt(1 - p)]]), np.array([[0, np.sqrt(p)], [0, 0]])]
+    return [np.array([[1, 0], [0, np.sqrt(1 - p)]]), np.array([[0, 0], [0, np.sqrt(p)]])]
+
+
+def random_noisy_circuit(n_qubits: int, n_ops: int, rng: random.Random):
+    """A random noisy circuit, as a native program and the equivalent Qiskit one.
+
+    Both are built from one op list so they cannot drift apart.
+    """
+    from qiskit import QuantumCircuit
+    from qiskit.quantum_info import Kraus
+
+    lines = [f"qubits {n_qubits}"]
+    qc = QuantumCircuit(n_qubits, n_qubits)
+    saw_channel = False
+    for _ in range(n_ops):
+        pick = rng.random()
+        if pick < 0.35:
+            q = rng.randrange(n_qubits)
+            g = rng.choice(["h", "x", "y", "z", "s", "t"])
+            lines.append(f"{g} {q}")
+            getattr(qc, g)(q)
+        elif pick < 0.5 and n_qubits >= 2:
+            a, b = rng.sample(range(n_qubits), 2)
+            lines.append(f"cnot {a} {b}")
+            qc.cx(a, b)
+        elif pick < 0.6:
+            q = rng.randrange(n_qubits)
+            angles = [rng.uniform(-np.pi, np.pi) for _ in range(3)]
+            lines.append("u3 " + " ".join(repr(a) for a in angles) + f" {q}")
+            qc.u(*angles, q)
+        else:
+            saw_channel = True
+            name = rng.choice(CHANNELS)
+            # Keep away from 0 and 1, where several channels agree trivially.
+            p = round(rng.uniform(0.05, 0.95), 6)
+            q = rng.randrange(n_qubits)
+            lines.append(f"{name} {p} {q}")
+            qc.append(Kraus(kraus_matrices(name, p)).to_instruction(), [q])
+    if not saw_channel:
+        # The phase exists to check channels; make sure there is one.
+        name, p, q = rng.choice(CHANNELS), 0.3, rng.randrange(n_qubits)
+        lines.append(f"{name} {p} {q}")
+        qc.append(Kraus(kraus_matrices(name, p)).to_instruction(), [q])
+
+    qc.measure(range(n_qubits), range(n_qubits))
+    return "\n".join(lines) + "\n", qc
+
+
+def aer_counts_circuit(qc, shots: int, seed: int) -> dict[str, float]:
+    """Aer's distribution for an already-built circuit."""
+    from qiskit import transpile
+    from qiskit_aer import AerSimulator
+
+    sim = AerSimulator(seed_simulator=seed)
+    result = sim.run(transpile(qc, sim), shots=shots).result().get_counts()
+    total = sum(result.values())
+    return {k.replace(" ", ""): v / total for k, v in result.items()}
+
+
 def qsim(args: list[str], program: str, binary: str) -> str:
     result = subprocess.run(
         [binary, *args, "-"],
@@ -401,6 +487,37 @@ def run_measure_phase(args, binary: str, rng: random.Random) -> float | None:
     return worst
 
 
+def run_noise_phase(args, binary: str, rng: random.Random) -> float | None:
+    """Both engines run the same noisy circuit, qsimulator by trajectory
+    sampling and Aer by its own channel implementation.
+
+    A channel has no OpenQASM form, so this builds the Qiskit circuit directly
+    from the same op list rather than sharing a source file. Trajectory
+    sampling converges as 1/sqrt(shots), so the tolerance is looser than the
+    measure phase's.
+    """
+    worst = 0.0
+    trials = max(1, args.trials // 10)
+    for trial in range(trials):
+        n_qubits = rng.randint(1, min(3, args.max_qubits))
+        program, qc = random_noisy_circuit(n_qubits, rng.randint(3, 8), rng)
+        seed = rng.randrange(1 << 30)
+
+        mine = qsim_counts(program, binary, args.shots, seed)
+        theirs = aer_counts_circuit(qc, args.shots, seed)
+        distance = total_variation(mine, theirs)
+        worst = max(worst, distance)
+        if distance > args.noise_tol:
+            print(
+                f"FAIL (noise trial {trial}): total variation {distance:.4f} "
+                f"exceeds {args.noise_tol:g}"
+            )
+            print(program)
+            print(f"qsimulator {mine}\naer        {theirs}")
+            return None
+    return worst
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--trials", type=int, default=500, help="trials per phase")
@@ -410,6 +527,12 @@ def main() -> int:
     parser.add_argument("--binary", default=None, help="path to the qsimulator binary")
     parser.add_argument(
         "--shots", type=int, default=20000, help="shots per measure-phase trial"
+    )
+    parser.add_argument(
+        "--noise-tol",
+        type=float,
+        default=0.05,
+        help="total-variation tolerance for the sampled noise phase",
     )
     parser.add_argument(
         "--measure-tol",
@@ -437,6 +560,14 @@ def main() -> int:
     print(
         f"OK: {max(1, args.trials // 10)} measure trials agree with Aer "
         f"(worst total variation {worst:.4f}, tol {args.measure_tol:g})"
+    )
+
+    worst = run_noise_phase(args, binary, rng)
+    if worst is None:
+        return 1
+    print(
+        f"OK: {max(1, args.trials // 10)} noise trials agree with Aer "
+        f"(worst total variation {worst:.4f}, tol {args.noise_tol:g})"
     )
     return 0
 
