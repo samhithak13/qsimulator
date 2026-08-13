@@ -6,6 +6,16 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-13
+
+A circuit is no longer a sequence of unitaries. Mid-circuit measurement,
+`reset` and classical feed-forward (`if`) all execute, which completes the
+OpenQASM 2 surface apart from `opaque` — a declaration with no body to
+simulate. The headline fix is that `measure` used to be accepted and silently
+ignored, so a measurement with gates after it returned a confidently wrong
+answer.
+
+### Added
 - Classical feed-forward: `Circuit::if_classical_eq`, the `if VALUE
   INSTRUCTION` program instruction, and OpenQASM `if (c == value) <gate>;`
   on import and export, plus `Circuit::measure_into`
@@ -156,7 +166,8 @@ Initial release.
   macOS covering formatting, clippy (`-D warnings`), a warning-clean
   `cargo doc`, tests, examples, cross-validation, fuzzing, and `cargo audit`.
 
-[Unreleased]: https://github.com/samhithak13/qsimulator/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/samhithak13/qsimulator/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/samhithak13/qsimulator/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/samhithak13/qsimulator/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/samhithak13/qsimulator/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/samhithak13/qsimulator/releases/tag/v0.1.0
