@@ -18,7 +18,8 @@
 //! `crz/cp THETA C T`, `cu3 THETA PHI LAMBDA C T`, and `swap A B`; three-qubit
 //! `toffoli C1 C2 T` and `cswap C A B`; the open-ended multi-controlled
 //! `mcx C... T` and `mcu3 THETA PHI LAMBDA C... T`; `measure Q`, which
-//! collapses a qubit mid-circuit; and a terminal
+//! collapses a qubit mid-circuit, and `reset Q`, which forces it to |0>; and a
+//! terminal
 //! `sample SHOTS SEED`. An angle is an arithmetic expression over numbers and
 //! `pi` — `0.7`, `pi`, `pi/2`, `-pi/4`, `2pi`, or `(pi/4 + 0.1)*2` — with the
 //! operators `+ - * / ^`, parentheses, and `sin`/`cos`/`tan`/`exp`/`ln`/`sqrt`.
@@ -213,10 +214,14 @@ pub fn parse(src: &str) -> Result<Program, ParseError> {
                 let (controls, tgt) = parse_control_list(&toks, 4, n).map_err(&at)?;
                 c.mcu(crate::gates::u3(theta, phi, lambda), &controls, tgt);
             }
-            "measure" => {
+            "measure" | "reset" => {
                 expect_arity(&toks, 2).map_err(&at)?;
                 let q = parse_qubit(&toks, 1, n).map_err(&at)?;
-                c.measure(q);
+                if cmd == "measure" {
+                    c.measure(q);
+                } else {
+                    c.reset(q);
+                }
             }
             "sample" => {
                 if sample.is_some() {

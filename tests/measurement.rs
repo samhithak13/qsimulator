@@ -202,3 +202,53 @@ fn trailing_measurement_is_readout_not_collapse() {
     plain.h(0).cnot(0, 1);
     assert_eq!(c.sample(500, 4), plain.sample(500, 4));
 }
+
+/// `reset` forces a qubit to |0> whatever state it was in — including a
+/// superposition, which it collapses first.
+#[test]
+fn reset_forces_zero() {
+    let mut c = Circuit::new(1);
+    c.h(0).reset(0);
+    assert_relative_eq!(c.run().probability(0), 1.0, epsilon = 1e-12);
+
+    let mut from_one = Circuit::new(1);
+    from_one.x(0).reset(0);
+    assert_relative_eq!(from_one.run().probability(0), 1.0, epsilon = 1e-12);
+}
+
+/// Resetting half of a Bell pair collapses the pair first, so the partner is
+/// left on whichever branch came up — |00> or |01>, never a superposition of
+/// the two and never |11>.
+#[test]
+fn reset_leaves_the_partner_on_the_collapsed_branch() {
+    let mut c = Circuit::new(2);
+    c.h(0).cnot(0, 1).reset(0);
+
+    let hist = c.sample(2000, 5);
+    // Index bit 0 is qubit 0, which the reset drove to |0>.
+    assert_eq!(
+        hist.get(&0b01).copied().unwrap_or(0),
+        0,
+        "qubit 0 must be 0"
+    );
+    assert_eq!(
+        hist.get(&0b11).copied().unwrap_or(0),
+        0,
+        "qubit 0 must be 0"
+    );
+    let zero = hist.get(&0b00).copied().unwrap_or(0);
+    let two = hist.get(&0b10).copied().unwrap_or(0);
+    assert_eq!(zero + two, 2000);
+    assert!((800..=1200).contains(&zero), "expected ~1000, got {zero}");
+}
+
+/// Unlike a trailing measurement, a trailing reset is not readout: it changes
+/// the state that gets sampled, so it always applies.
+#[test]
+fn trailing_reset_still_applies() {
+    let mut c = Circuit::new(1);
+    c.h(0).reset(0);
+    // If this were treated as readout the state would still be a superposition.
+    assert_relative_eq!(c.run().probability(0), 1.0, epsilon = 1e-12);
+    assert_eq!(c.sample(300, 1).get(&0).copied().unwrap_or(0), 300);
+}

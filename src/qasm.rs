@@ -40,8 +40,10 @@
 //!   phase of `theta/2`, which is unobservable and which neither OpenQASM 2 nor
 //!   this engine's circuit representation can express.
 //!
-//! Anything else — `if`, `opaque`, `reset` — is reported as an
-//! unsupported-feature error rather than silently mis-simulated.
+//! - `reset q[i];` and `reset q;` collapse a qubit and force it to |0>.
+//!
+//! Anything else — `if`, `opaque` — is reported as an unsupported-feature
+//! error rather than silently mis-simulated.
 
 use crate::error::ParseError;
 use crate::gates;
@@ -117,8 +119,9 @@ fn parse_inner(src: &str) -> Result<Circuit, String> {
             // A measurement collapses the register, so ignoring one would
             // silently give the wrong answer for anything that follows it.
             "measure" => apply_measure(&mut circuit, stmt, &regs)?,
+            "reset" => apply_reset(&mut circuit, stmt, &regs)?,
             // Features we deliberately reject rather than mis-simulate.
-            "opaque" | "if" | "reset" => {
+            "opaque" | "if" => {
                 return Err(format!("unsupported OpenQASM feature `{}`", keyword(stmt)));
             }
             _ => apply_gate(&mut circuit, stmt, &regs, &defs, &mut budget)?,
@@ -289,29 +292,53 @@ fn apply_measure(
     if dest.trim().is_empty() {
         return Err(format!("measurement needs a classical target: `{stmt}`"));
     }
-    let source = source.trim();
     // `measure q[i] -> c[j]` measures one qubit; `measure q -> c` measures the
     // whole register, which is how most hand-written programs end.
-    if source.contains('[') {
-        let qubits = parse_operands(source, regs)?;
-        match qubits.as_slice() {
-            [qubit] => circuit.measure(*qubit),
-            _ => {
-                return Err(format!(
-                    "measurement takes one qubit, got {} in `{stmt}`",
-                    qubits.len()
-                ))
-            }
-        };
-    } else {
-        let reg = regs
-            .get(source)
-            .ok_or_else(|| format!("unknown register `{source}` in `{stmt}`"))?;
-        for i in 0..reg.size {
-            circuit.measure(reg.offset + i);
-        }
+    for qubit in resolve_qubits(source.trim(), regs, stmt)? {
+        circuit.measure(qubit);
     }
     Ok(())
+}
+
+/// Parse `reset q[i]` or `reset q` and apply the collapse-to-|0>.
+fn apply_reset(
+    circuit: &mut Circuit,
+    stmt: &str,
+    regs: &HashMap<String, Reg>,
+) -> Result<(), String> {
+    let target = stmt
+        .strip_prefix("reset")
+        .ok_or_else(|| format!("malformed reset `{stmt}`"))?
+        .trim();
+    for qubit in resolve_qubits(target, regs, stmt)? {
+        circuit.reset(qubit);
+    }
+    Ok(())
+}
+
+/// Resolve `q[i]` to that one qubit, or a bare `q` to the whole register.
+fn resolve_qubits(
+    operand: &str,
+    regs: &HashMap<String, Reg>,
+    stmt: &str,
+) -> Result<Vec<usize>, String> {
+    if operand.is_empty() {
+        return Err(format!("expected a qubit in `{stmt}`"));
+    }
+    if operand.contains('[') {
+        let qubits = parse_operands(operand, regs)?;
+        if qubits.len() != 1 {
+            return Err(format!(
+                "expected one qubit, got {} in `{stmt}`",
+                qubits.len()
+            ));
+        }
+        return Ok(qubits);
+    }
+    let reg = regs
+        .get(operand)
+        .ok_or_else(|| format!("unknown register `{operand}` in `{stmt}`"))?;
+    Ok((0..reg.size).map(|i| reg.offset + i).collect())
 }
 
 /// Parse a comma-separated list of formal names, rejecting duplicates and

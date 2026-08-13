@@ -216,13 +216,12 @@ fn error_unsupported_gate() {
 
 #[test]
 fn error_unsupported_feature() {
-    let err = qasm::parse("qreg q[1];\nreset q[0];\n")
+    // `if` needs classical registers this engine does not model. (`reset` used
+    // to stand in here, before it became supported.)
+    let err = qasm::parse("qreg q[1];\ncreg c[1];\nif(c==1) x q[0];\n")
         .unwrap_err()
         .to_string();
-    assert!(
-        err.contains("unsupported OpenQASM feature `reset`"),
-        "{err}"
-    );
+    assert!(err.contains("unsupported OpenQASM feature `if`"), "{err}");
 }
 
 #[test]
@@ -574,10 +573,26 @@ fn measure_errors() {
         ),
         (
             "qreg q[2];\ncreg c[2];\nmeasure q[0],q[1] -> c[0];\n",
-            "takes one qubit",
+            "expected one qubit",
         ),
     ] {
         let err = qasm::parse(src).unwrap_err().to_string();
         assert!(err.contains(needle), "for `{src}`: {err}");
     }
+}
+
+/// `reset` is honoured on import, in both the indexed and whole-register forms.
+#[test]
+fn reset_imports() {
+    let indexed = qasm::parse("qreg q[2];\nh q[0];\nh q[1];\nreset q[0];\n").expect("parse");
+    let state = indexed.run();
+    assert_relative_eq!(state.prob_qubit_one(0), 0.0, epsilon = 1e-12);
+
+    let whole = qasm::parse("qreg q[2];\nh q[0];\nh q[1];\nreset q;\n").expect("parse");
+    assert_relative_eq!(whole.run().probability(0b00), 1.0, epsilon = 1e-12);
+
+    let err = qasm::parse("qreg q[1];\nreset nope;\n")
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("unknown register"), "{err}");
 }

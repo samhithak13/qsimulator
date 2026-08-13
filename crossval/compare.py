@@ -185,8 +185,10 @@ def random_measured_program(n_qubits: int, n_gates: int, rng: random.Random) -> 
         lines.append(gate())
     measured = rng.randrange(n_qubits)
     # Superposition in, collapse, back out of the basis — see the note above.
+    # `reset` collapses the same way and then forces |0>, so it belongs here
+    # too: it is the other non-unitary operation this engine implements.
     lines.append(rng.choice([f"h {measured}", f"sx {measured}"]))
-    lines.append(f"measure {measured}")
+    lines.append(rng.choice([f"measure {measured}", f"reset {measured}"]))
     lines.append(rng.choice([f"h {measured}", f"sx {measured}"]))
     for _ in range(max(1, n_gates // 2)):
         lines.append(gate())

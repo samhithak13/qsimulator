@@ -65,6 +65,11 @@ enum Op {
     Measure {
         qubit: usize,
     },
+    /// Collapse `qubit` and force it to |0>, leaving the rest of the register
+    /// on whichever branch the collapse took.
+    Reset {
+        qubit: usize,
+    },
     MultiControlled {
         gate: Gate,
         controls: Vec<usize>,
@@ -447,6 +452,19 @@ impl Circuit {
         self.mcx(&[control1, control2], target)
     }
 
+    /// Reset `qubit` to |0>, whatever state it was in.
+    ///
+    /// This is a collapse followed by a flip if the outcome was |1>, so it is
+    /// not a unitary: it destroys any superposition on `qubit`, and where that
+    /// qubit was entangled it leaves the rest of the register on whichever
+    /// branch the collapse took. Unlike a trailing
+    /// [`measure`](Circuit::measure), a reset always applies — it changes the
+    /// state that gets sampled even as the last operation.
+    pub fn reset(&mut self, qubit: usize) -> &mut Self {
+        self.ops.push(Op::Reset { qubit });
+        self
+    }
+
     /// Measure `qubit` in the computational basis, collapsing the register onto
     /// the observed outcome.
     ///
@@ -467,6 +485,12 @@ impl Circuit {
         self.ops.iter().any(|op| matches!(op, Op::Measure { .. }))
     }
 
+    /// Whether the circuit contains a reset, which always branches — even as
+    /// the final operation, since it changes the state that is sampled.
+    fn has_reset(&self) -> bool {
+        self.ops.iter().any(|op| matches!(op, Op::Reset { .. }))
+    }
+
     /// How many of the final operations are measurements — the circuit's
     /// readout, as opposed to a measurement something else depends on.
     fn trailing_measurements(&self) -> usize {
@@ -484,9 +508,10 @@ impl Circuit {
     /// case alone that forces [`sample`](Circuit::sample) to re-run the circuit
     /// per shot.
     fn measures_mid_circuit(&self) -> bool {
-        self.ops[..self.ops.len() - self.trailing_measurements()]
-            .iter()
-            .any(|op| matches!(op, Op::Measure { .. }))
+        self.has_reset()
+            || self.ops[..self.ops.len() - self.trailing_measurements()]
+                .iter()
+                .any(|op| matches!(op, Op::Measure { .. }))
     }
 
     /// Run the circuit starting from |0...0> and return the state it prepares.
@@ -526,6 +551,12 @@ impl Circuit {
             match op {
                 Op::Measure { qubit } => {
                     state.measure_qubit(*qubit, rng);
+                }
+                // Collapse, then flip the |1> branch back down to |0>.
+                Op::Reset { qubit } => {
+                    if state.measure_qubit(*qubit, rng) {
+                        state.apply_1q(&gates::x(), *qubit);
+                    }
                 }
                 Op::Single { gate, target, .. } => state.apply_1q(gate, *target),
                 Op::Controlled {
@@ -680,6 +711,9 @@ impl Circuit {
                 Op::Measure { qubit } => {
                     out.push_str(&format!("measure q[{qubit}] -> c[{qubit}];\n"));
                 }
+                Op::Reset { qubit } => {
+                    out.push_str(&format!("reset q[{qubit}];\n"));
+                }
                 Op::MultiControlled {
                     gate,
                     controls,
@@ -743,6 +777,9 @@ impl Circuit {
                 }
                 Op::Measure { qubit } => {
                     col[*qubit] = Some("M");
+                }
+                Op::Reset { qubit } => {
+                    col[*qubit] = Some("R");
                 }
                 Op::MultiControlled {
                     controls,

@@ -316,6 +316,7 @@ PROGRAM FORMAT (one instruction per line; `#` starts a comment):
     mcx C... T                 Multi-controlled X, any number of controls
     mcu3 THETA PHI LAMBDA C... T   Multi-controlled U3
     measure Q                  Collapse qubit Q (readout if nothing follows)
+    reset Q                    Collapse qubit Q and force it to |0>
     sample SHOTS SEED          Sample the final state (optional, once)
 
 EXAMPLE (GHZ state):

@@ -7,6 +7,12 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- `reset`: `Circuit::reset`, the `reset Q` program instruction, OpenQASM
+  `reset q[i];` and `reset q;` on import, and `reset` lines on export. It was
+  previously rejected as unsupported; implementing measurement made it a
+  collapse plus a conditional flip. Unlike a trailing measurement, a reset
+  always applies — it changes the state that gets sampled even as the last
+  operation.
 - A third cross-validation phase: circuits with a mid-circuit measurement,
   sampled by qsimulator and by Qiskit Aer over the exported program and
   compared by total variation distance. Such a circuit has no single state

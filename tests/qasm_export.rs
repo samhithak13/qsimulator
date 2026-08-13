@@ -322,3 +322,16 @@ fn no_creg_without_measurement() {
     c.h(0).cnot(0, 1);
     assert!(!c.to_qasm().unwrap().contains("creg"), "{:?}", c.to_qasm());
 }
+
+/// `reset` exports as OpenQASM `reset` and round-trips in distribution.
+#[test]
+fn reset_exports_and_round_trips() {
+    let mut c = Circuit::new(2);
+    c.h(0).cnot(0, 1).reset(0).h(0);
+
+    let qasm = c.to_qasm().expect("should export");
+    assert!(qasm.contains("reset q[0];"), "{qasm}");
+
+    let reimported = qasm::parse(&qasm).expect("should re-import");
+    assert_eq!(reimported.sample(800, 12), c.sample(800, 12));
+}
