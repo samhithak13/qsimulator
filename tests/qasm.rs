@@ -667,3 +667,80 @@ fn conditional_errors() {
         assert!(err.contains(needle), "for `{src}`: {err}");
     }
 }
+
+/// The controlled qelib1 gates, checked against the engine's own primitives.
+/// These were reached only by the cross-validation harness, which runs the
+/// compiled binary in a subprocess and so contributes no in-tree coverage: a
+/// refactor could break one and `cargo test` would stay green.
+#[test]
+fn controlled_qelib1_gates_match_their_primitives() {
+    // crx/cry with the control set are the plain rotation on the target.
+    for (name, builder) in [("crx", "rx"), ("cry", "ry")] {
+        let controlled = qasm::parse(&format!("qreg q[2];\nx q[0];\n{name}(0.7) q[0],q[1];\n"))
+            .expect("should parse");
+        let mut plain = Circuit::new(2);
+        plain.x(0);
+        match builder {
+            "rx" => plain.rx(0.7, 1),
+            _ => plain.ry(0.7, 1),
+        };
+        assert_same_amplitudes(&controlled.run(), &plain.run());
+
+        // With the control clear they do nothing.
+        let idle = qasm::parse(&format!("qreg q[2];\n{name}(0.7) q[0],q[1];\n")).unwrap();
+        assert_relative_eq!(idle.run().probability(0), 1.0, epsilon = 1e-12);
+    }
+
+    // csx twice with the control set is a CNOT, since sx squared is X.
+    let twice = qasm::parse("qreg q[2];\nx q[0];\ncsx q[0],q[1];\ncsx q[0],q[1];\n").unwrap();
+    let mut cnot = Circuit::new(2);
+    cnot.x(0).cnot(0, 1);
+    assert_same_amplitudes(&twice.run(), &cnot.run());
+
+    // cu(theta,phi,lambda,gamma) is a controlled-u3 plus a phase on the control.
+    let cu = qasm::parse("qreg q[2];\nh q[0];\ncu(0.6,-0.3,1.2,0.4) q[0],q[1];\n").unwrap();
+    let mut equivalent = Circuit::new(2);
+    equivalent.h(0).p(0.4, 0).cu3(0.6, -0.3, 1.2, 0, 1);
+    assert_same_amplitudes(&cu.run(), &equivalent.run());
+}
+
+/// `rc3x` is a *relative-phase* three-control X: it permutes like `c3x` but
+/// differs in phase, which is the point of the cheaper form.
+#[test]
+fn rc3x_matches_c3x_in_populations_but_not_phase() {
+    let prep = "qreg q[4];\nh q[0];\nh q[1];\nh q[2];\n";
+    let relative = qasm::parse(&format!("{prep}rc3x q[0],q[1],q[2],q[3];\n")).unwrap();
+    let exact = qasm::parse(&format!("{prep}c3x q[0],q[1],q[2],q[3];\n")).unwrap();
+
+    let (a, b) = (relative.run(), exact.run());
+    for i in 0..16 {
+        assert_relative_eq!(a.probability(i), b.probability(i), epsilon = 1e-12);
+    }
+    assert!(
+        a.amplitudes()
+            .iter()
+            .zip(b.amplitudes())
+            .any(|(x, y)| (x - y).norm() > 1e-9),
+        "rc3x must differ from c3x in phase"
+    );
+}
+
+/// Declaration errors that no valid program reaches.
+#[test]
+fn declaration_errors() {
+    for (src, needle) in [
+        ("qreg q[1];\nqreg q[1];\n", "duplicate register"),
+        (
+            "qreg q[1];\ncreg c[1];\ncreg c[1];\n",
+            "duplicate classical register",
+        ),
+        ("qreg q[0];\n", "size must be >= 1"),
+        ("qreg q[1];\ngate { h a; }\n", "needs a name"),
+        ("qreg q[1];\ngate g(1) a { h a; }\n", "invalid parameter"),
+        ("qreg q[2];\ncx q[0],q[0];\n", "must be distinct qubits"),
+        ("qreg q[1];\nreset ;\n", "expected a qubit"),
+    ] {
+        let err = qasm::parse(src).unwrap_err().to_string();
+        assert!(err.contains(needle), "for `{src}`: {err}");
+    }
+}
