@@ -6,6 +6,14 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-13
+
+Noise. A channel would normally need a density matrix, squaring memory from
+`2^n` amplitudes to `2^n x 2^n`; simulating it by quantum trajectories instead
+keeps the state vector and reuses the per-shot re-run that measurement already
+required. The trade is statistical: one run is a single trajectory, and results
+converge as `1/sqrt(shots)`.
+
 ### Added
 - Noise channels, simulated by the quantum-trajectory method: each shot samples
   one Kraus operator rather than carrying a density matrix, which fits the
@@ -19,11 +27,11 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   op list rather than through a shared source file.
 
 ### Changed
-- `ExportError` is `#[non_exhaustive]` and gains `Noise`: OpenQASM 2 has no
-  syntax for a channel, so a noisy circuit cannot be written out without
-  silently dropping the noise.
-
-### Changed
+- **Breaking:** `ExportError` gains a `Noise` variant, since OpenQASM 2 has no
+  syntax for a channel and a noisy circuit cannot be written out without
+  silently dropping the noise. The enum is now `#[non_exhaustive]`, so later
+  variants will be additive — but code matching it exhaustively needs a
+  catch-all arm.
 - The teleportation example is built with `Circuit` rather than the low-level
   `State` API: the protocol needed classical feed-forward, which now exists.
   It walks seeds until all four Bell outcomes have come up and checks each, so
@@ -191,7 +199,8 @@ Initial release.
   macOS covering formatting, clippy (`-D warnings`), a warning-clean
   `cargo doc`, tests, examples, cross-validation, fuzzing, and `cargo audit`.
 
-[Unreleased]: https://github.com/samhithak13/qsimulator/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/samhithak13/qsimulator/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/samhithak13/qsimulator/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/samhithak13/qsimulator/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/samhithak13/qsimulator/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/samhithak13/qsimulator/compare/v0.1.0...v0.2.0
