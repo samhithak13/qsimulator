@@ -25,6 +25,8 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   branching circuit cannot be checked by comparing state vectors.
 
 ### Fixed
+- CI actions moved off the deprecated Node 20 runtime: `actions/checkout` v4
+  to v7, `actions/cache` v4 to v6, `actions/setup-python` v5 to v7.
 - OpenQASM `measure` was accepted and silently ignored, so a measurement with
   gates after it gave the wrong answer rather than an error — `h; measure; h`
   reported |0> with certainty where the real result is a coin flip, because
