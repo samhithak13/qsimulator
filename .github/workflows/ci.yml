@@ -54,6 +54,7 @@ jobs:
           cargo run --example grover
           cargo run --example qft
           cargo run --example teleportation
+          cargo run --example noise
 
   lint:
     name: Format, clippy, docs

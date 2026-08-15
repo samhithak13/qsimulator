@@ -54,8 +54,11 @@ surviving amplitudes.
   register onto the measured subspace, and renormalize.
 - `State::measure_all(rng)` — Born-rule sample a full basis state and
   collapse onto it, returning the little-endian index.
-- `Circuit::sample(shots, seed)` — run once, then measure independent
-  clones of the final state `shots` times into a histogram.
+- `Circuit::sample(shots, seed)` — a histogram over `shots` measurements. When
+  nothing in the circuit branches it runs once and measures clones of the final
+  state; when a collapse can affect what follows — a mid-circuit measurement, a
+  reset, or a noise channel — it re-runs the circuit per shot, since there is
+  no single final state to draw from.
 
 Randomness comes from a seedable, dependency-free `xorshift64` generator
 (`rng::Rng`). The seed is mixed through the SplitMix64 finalizer so that
@@ -73,10 +76,18 @@ importer is validated against the equivalent builder circuit and the
 exporter by round-tripping back through it.
 
 Beyond the in-tree tests, `crossval/compare.py` validates the engine against
-Qiskit: it runs random circuits over the shared gate set through both
-implementations (via OpenQASM) and compares the state vectors up to global
-phase. The `--statevector` CLI flag exposes the final amplitudes as JSON for
-this harness.
+Qiskit in four phases. Two compare state vectors up to global phase — random
+circuits over the shared gate set, and qsimulator's own *exported* form read
+back by Qiskit, which is what checks the decompositions. The other two compare
+sampled distributions against Qiskit Aer, because a circuit that collapses or
+decoheres has no single state vector: one covers mid-circuit measurement,
+reset and classical feed-forward, the other noise channels.
+
+Each sampled phase was checked against the bug it exists to catch, not just
+for passing: the measurement phase originally agreed with Aer even with the
+collapse ignored entirely, because a collapse commutes with anything diagonal
+or permutation-like in the computational basis. Its generator now sandwiches
+the collapse between basis-changing gates. See `crossval/README.md`.
 
 ## Status
 
@@ -85,26 +96,33 @@ Implemented and covered by tests:
 - **State vector** (`State`) — construction, amplitudes, per-index
   probability, norm; single-, controlled-, and multi-controlled gate
   application; qubit swap.
-- **Gates** (`gates`) — the identity, X, Y, Z, H, S, T, S†, T†, phase `p(λ)`,
-  `u2`, `u3`, and `rx`/`ry`/`rz`.
+- **Gates** (`gates`) — the identity, X, Y, Z, H, S, T, S†, T†, `sx`/`sxdg`,
+  phase `p(λ)`, `u2`, `u3`, and `rx`/`ry`/`rz`.
 - **Measurement** — `prob_qubit_one`, `measure_qubit`, `measure_all`, and
   `Circuit::sample`, backed by the seedable `rng::Rng`.
+- **Non-unitary operations** — mid-circuit `measure` and `reset`, classical
+  feed-forward (`if_classical_eq`) over one classical register, and noise
+  channels via `apply_kraus`. Each makes execution depend on the RNG stream,
+  which `run_seeded` chooses.
+- **Noise** (`noise`) — depolarizing, bit flip, phase flip, amplitude damping
+  and phase damping, with a trace-preservation check.
 - **Circuit** (`circuit::Circuit`) — builder methods for the full gate set,
   including `cnot`, `cz`, `crz`, `cp`, `cu3`, `swap`, `toffoli`, and the
   general `cu`/`mcx`/`mcu`; execution; ASCII diagrams; OpenQASM export at any
   control width.
 - **Front ends** — a text program parser (`program`), an OpenQASM 2.0
-  importer (`qasm`), and a CLI (`main`).
+  importer (`qasm`) covering `gate` declarations and all of `qelib1`, and a
+  CLI (`main`).
 
-Over 150 unit and integration tests at ~98% line coverage; CI runs fmt,
+Over 190 unit and integration tests at ~97% line coverage; CI runs fmt,
 clippy (`-D warnings`), a warning-clean `cargo doc`, build, test, the Qiskit
 cross-validation, parser fuzzing, `cargo audit`, and a coverage floor.
 
 ## Module layout
 
 - `src/state.rs` — the state vector, gate application (`apply_1q`,
-  `apply_controlled_1q`, `apply_multi_controlled_1q`), measurement, and
-  `swap_qubits`.
+  `apply_controlled_1q`, `apply_multi_controlled_1q`), measurement and
+  collapse, `apply_kraus` for noise, and `swap_qubits`.
 - `src/gates.rs` — the 2×2 gate matrices (`type Gate = [[Complex64; 2]; 2]`)
   and their unit tests.
 - `src/circuit.rs` — the `Op` enum, the `Circuit` builder, `run`, `sample`,
@@ -112,11 +130,16 @@ cross-validation, parser fuzzing, `cargo audit`, and a coverage floor.
 - `src/program.rs` — the text program parser (`parse`, `Program`,
   `SampleSpec`); `parse_angle` is shared with the QASM importer.
 - `src/qasm.rs` — the OpenQASM 2.0 subset importer.
+- `src/expr.rs` — the angle expression evaluator, shared by both front ends;
+  `gate` bodies need arithmetic over their formal parameters.
+- `src/noise.rs` — the standard single-qubit channels as Kraus operators, and
+  the trace-preservation check that rejects a non-physical one.
 - `src/rng.rs` — the seedable RNG.
 - `src/main.rs` — the CLI; dispatches to the QASM importer by `.qasm`
   extension or `OPENQASM` header, otherwise the text format.
-- `tests/` — one file per area: measurement, rotations, swap, toffoli, the
-  builder groups, diagrams, GHZ, and QASM import/export.
+- `tests/` — one file per area: measurement and collapse, noise, rotations,
+  swap, toffoli, the builder groups, diagrams, GHZ, QASM import/export, the
+  text program format, the CLI, and property and robustness tests.
 
 `Op` variants carry a `label` and `params` used by `diagram()` and
 `to_qasm()`; neither affects execution. A new gate sets both.

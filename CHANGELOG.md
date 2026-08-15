@@ -6,6 +6,16 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- A noise example (`examples/noise.rs`), checking each channel against its
+  analytic rate: depolarizing breaking a Bell pair's correlation at `2p/3`,
+  amplitude damping decaying as `(1-gamma)^k` over rounds, and phase damping
+  destroying interference without moving populations. CI runs it.
+
+### Fixed
+- `docs/design.md` listed neither `noise.rs` nor `expr.rs` in the module
+  layout, and its status section predated mid-circuit measurement.
+
 ## [0.5.0] - 2026-08-13
 
 Noise. A channel would normally need a density matrix, squaring memory from
