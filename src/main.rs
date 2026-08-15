@@ -20,6 +20,8 @@ enum Mode {
     EmitQasm,
     /// Print the final amplitudes as JSON.
     Statevector,
+    /// Print the final density matrix as JSON.
+    Density,
 }
 
 /// The parsed command line.
@@ -71,6 +73,13 @@ fn main() -> ExitCode {
             }
         },
         Mode::Statevector => print_statevector(&circuit.run()),
+        Mode::Density => match circuit.run_density() {
+            Ok(rho) => print_density(&rho),
+            Err(e) => {
+                eprintln!("error: {e}");
+                return ExitCode::FAILURE;
+            }
+        },
         _ => {
             let sample = match effective_sample(spec, cli.shots, cli.seed) {
                 Ok(sample) => sample,
@@ -111,15 +120,17 @@ fn parse_args(args: &[String]) -> Result<Cli, String> {
                     ..cli
                 })
             }
-            "--emit-qasm" | "--statevector" => {
+            "--emit-qasm" | "--statevector" | "--density" => {
                 if saw_mode_flag {
-                    return Err("`--emit-qasm` and `--statevector` are exclusive".into());
+                    return Err(
+                        "`--emit-qasm`, `--statevector` and `--density` are exclusive".into(),
+                    );
                 }
                 saw_mode_flag = true;
-                cli.mode = if arg == "--emit-qasm" {
-                    Mode::EmitQasm
-                } else {
-                    Mode::Statevector
+                cli.mode = match arg.as_str() {
+                    "--emit-qasm" => Mode::EmitQasm,
+                    "--statevector" => Mode::Statevector,
+                    _ => Mode::Density,
                 };
             }
             "--shots" => {
@@ -150,7 +161,10 @@ fn parse_args(args: &[String]) -> Result<Cli, String> {
         cli.mode = Mode::Demo;
     }
     if saw_mode_flag && (cli.shots.is_some() || cli.seed.is_some()) {
-        return Err("`--shots`/`--seed` do not apply to `--emit-qasm` or `--statevector`".into());
+        return Err(
+            "`--shots`/`--seed` do not apply to `--emit-qasm`, `--statevector` or `--density`"
+                .into(),
+        );
     }
     Ok(cli)
 }
@@ -213,6 +227,20 @@ fn print_statevector(state: &qsimulator::State) {
             out.push(',');
         }
         out.push_str(&format!("[{},{}]", a.re, a.im));
+    }
+    out.push(']');
+    println!("{out}");
+}
+
+/// Print the final density matrix as a flat JSON array of `[re, im]` pairs, in
+/// row-major order over `2^n x 2^n`. Full `f64` precision, one line.
+fn print_density(rho: &qsimulator::density::DensityMatrix) {
+    let mut out = String::from("[");
+    for (i, e) in rho.entries().iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        out.push_str(&format!("[{},{}]", e.re, e.im));
     }
     out.push(']');
     println!("{out}");
@@ -286,6 +314,8 @@ USAGE:
     qsimulator -               Read a program from stdin
     qsimulator --emit-qasm <FILE>   Print the circuit as OpenQASM 2.0
     qsimulator --statevector <FILE> Print final amplitudes as JSON
+    qsimulator --density <FILE>     Print the final density matrix as JSON
+                               (exact noise; no shots, but 4^n memory)
     qsimulator --help          Show this help
 
 OPTIONS:

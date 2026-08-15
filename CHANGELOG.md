@@ -7,12 +7,28 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- A density-matrix backend (`density::DensityMatrix`, `Circuit::run_density`,
+  `qsimulator --density`). Where the state vector samples one trajectory
+  through noise, this carries the whole mixture, so channels, measurement and
+  reset are applied *exactly* — no shots, no sampling error — and `purity`
+  measures directly how much noise has cost. The trade is memory: `4^n` entries
+  against `2^n`, so the ceiling is 12 qubits rather than 30.
+  `DensityError::ClassicalFeedForward` refuses `if`, which needs a classical
+  outcome the matrix does not carry.
+- A fifth cross-validation phase comparing density matrices against Qiskit
+  entrywise. Both sides are exact, so it checks coherences rather than a
+  distribution, and agrees to about 1e-16.
 - A noise example (`examples/noise.rs`), checking each channel against its
   analytic rate: depolarizing breaking a Bell pair's correlation at `2p/3`,
   amplitude damping decaying as `(1-gamma)^k` over rounds, and phase damping
   destroying interference without moving populations. CI runs it.
 
 ### Fixed
+- `noise::depolarizing` documented the wrong convention: it said `p` was the
+  probability of replacing the qubit with the maximally mixed state, when the
+  Kraus operators apply X, Y or Z each with `p/3`. Those differ by a factor of
+  4/3 — the state is maximally mixed at `p = 3/4`, not `p = 1`. Only the doc
+  was wrong; the operators were always the ones cross-validated against Qiskit.
 - `docs/design.md` listed neither `noise.rs` nor `expr.rs` in the module
   layout, and its status section predated mid-circuit measurement.
 

@@ -64,8 +64,15 @@ fn flip_channel(p: f64, g: Kraus) -> Vec<Kraus> {
     vec![scaled(gates::id(), (1.0 - p).sqrt()), scaled(g, p.sqrt())]
 }
 
-/// Depolarizing: with probability `p` the qubit is replaced by the maximally
-/// mixed state, which is the same as applying X, Y or Z each with `p/3`.
+/// Depolarizing: applies X, Y or Z each with probability `p/3`, and leaves the
+/// qubit alone with probability `1-p`.
+///
+/// Note which convention that is. The state becomes maximally mixed at
+/// `p = 3/4`, not at `p = 1` — at 3/4 all four Paulis including the identity
+/// are equally likely, which is what averages a qubit away. At `p = 1` the
+/// channel maps `rho` to `(2I - rho)/3`, still a mixed state but not the
+/// maximally mixed one. The other common parameterization, "replace with the
+/// maximally mixed state with probability `p`", corresponds to `4p/3` here.
 ///
 /// Operators are ordered identity, X, Y, Z.
 pub fn depolarizing(p: f64) -> Vec<Kraus> {

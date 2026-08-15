@@ -41,6 +41,45 @@ impl fmt::Display for ExportError {
 
 impl std::error::Error for ExportError {}
 
+/// Reason a circuit could not be run as a density matrix by
+/// [`Circuit::run_density`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum DensityError {
+    /// The register is too large for a `2^n x 2^n` matrix. The state-vector
+    /// backend reaches roughly twice as many qubits.
+    TooManyQubits {
+        /// The circuit's qubit count.
+        qubits: usize,
+        /// The largest a density matrix will allocate.
+        max: usize,
+    },
+    /// A classical conditional. A density matrix carries the quantum mixture
+    /// but no classical outcome to branch on: doing this exactly means tracking
+    /// a distribution over classical registers, each with its own matrix. Run
+    /// such a circuit with [`Circuit::sample`] instead, which takes one branch
+    /// per shot.
+    ClassicalFeedForward,
+}
+
+impl fmt::Display for DensityError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DensityError::TooManyQubits { qubits, max } => write!(
+                f,
+                "a density matrix for {qubits} qubits is 4^{qubits} entries, over the \
+                 maximum of {max}"
+            ),
+            DensityError::ClassicalFeedForward => f.write_str(
+                "cannot run a circuit with a classical conditional as a density matrix; \
+                 sample it instead",
+            ),
+        }
+    }
+}
+
+impl std::error::Error for DensityError {}
+
 /// A single instruction in a circuit.
 ///
 /// Each gate-bearing variant carries a short `label` (e.g. `"H"`, `"RX"`)
@@ -776,6 +815,56 @@ fn apply_op(state: &mut State, op: &Op, rng: &mut Rng, clbits: &mut u64) {
 }
 
 impl Circuit {
+    /// Run the circuit as a density matrix, exactly.
+    ///
+    /// Where [`run`](Circuit::run) samples one trajectory through any noise or
+    /// collapse, this carries the whole mixture, so noise channels, measurement
+    /// and reset are applied exactly and the result is deterministic — no
+    /// shots, no sampling error. An unread measurement is precisely the channel
+    /// that erases coherence between its outcomes.
+    ///
+    /// The cost is `4^n` entries against the state vector's `2^n`, so the
+    /// register ceiling is about half; see
+    /// [`MAX_DENSITY_QUBITS`](crate::density::MAX_DENSITY_QUBITS).
+    ///
+    /// Returns [`DensityError::ClassicalFeedForward`] for a circuit containing
+    /// [`if_classical_eq`](Circuit::if_classical_eq): branching on a measured
+    /// outcome needs a classical register the matrix does not carry.
+    pub fn run_density(&self) -> Result<crate::density::DensityMatrix, DensityError> {
+        if self.n_qubits > crate::density::MAX_DENSITY_QUBITS {
+            return Err(DensityError::TooManyQubits {
+                qubits: self.n_qubits,
+                max: crate::density::MAX_DENSITY_QUBITS,
+            });
+        }
+        let mut rho = crate::density::DensityMatrix::new(self.n_qubits);
+        // Unlike `run`, trailing measurements are applied: dephasing is part of
+        // the state a density matrix describes, and costs nothing to include.
+        for op in &self.ops {
+            match op {
+                Op::Single { gate, target, .. } => rho.apply_1q(gate, *target),
+                Op::Controlled {
+                    gate,
+                    control,
+                    target,
+                    ..
+                } => rho.apply_controlled_1q(gate, *control, *target),
+                Op::Swap { a, b } => rho.swap_qubits(*a, *b),
+                Op::MultiControlled {
+                    gate,
+                    controls,
+                    target,
+                    ..
+                } => rho.apply_multi_controlled_1q(gate, controls, *target),
+                Op::Measure { qubit, .. } => rho.measure_dephase(*qubit),
+                Op::Reset { qubit } => rho.reset(*qubit),
+                Op::Kraus { ops, qubit, .. } => rho.apply_kraus(ops, *qubit),
+                Op::Conditional { .. } => return Err(DensityError::ClassicalFeedForward),
+            }
+        }
+        Ok(rho)
+    }
+
     /// Run the circuit `shots` times and return a histogram of measured
     /// basis-state outcomes.
     ///

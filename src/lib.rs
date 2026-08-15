@@ -22,6 +22,7 @@
 #![warn(missing_docs)]
 
 pub mod circuit;
+pub mod density;
 pub mod error;
 mod expr;
 pub mod gates;
@@ -31,7 +32,7 @@ pub mod qasm;
 pub mod rng;
 pub mod state;
 
-pub use circuit::{Circuit, ExportError};
+pub use circuit::{Circuit, DensityError, ExportError};
 pub use error::ParseError;
 pub use rng::Rng;
 pub use state::State;

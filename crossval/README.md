@@ -12,6 +12,10 @@ as an independent reference implementation. It runs two phases, each for
   the program; Qiskit runs it as qsimulator exports it (`--emit-qasm`), that is
   after decomposition. Checks that a decomposed export still means the same
   thing to another tool.
+- **density** — the same noisy circuit run as a density matrix on both sides,
+  compared entry by entry. Both are exact here, so this checks coherences and
+  not just a distribution: it is the strictest comparison in the harness, and
+  in practice agrees to around 1e-16.
 - **measure** — a random circuit whose state collapses partway through, sampled
   by qsimulator and by Qiskit Aer over the exported program, compared by total
   variation distance. Runs for a tenth of `--trials`, since each trial samples

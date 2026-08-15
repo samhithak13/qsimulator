@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Cross-validate qsimulator against Qiskit over the OpenQASM 2.0 bridge.
 
-Two phases, each run for `--trials` random circuits:
+Five phases. The two exact ones run `--trials` circuits each; the three that
+need Qiskit Aer or a density matrix run a tenth of that, since each samples
+`--shots` on both sides or allocates `4^n` entries:
 
   * **gates** — generate a random OpenQASM program from the gate set both
     engines implement, and run it through qsimulator (via its `--statevector`
@@ -21,6 +23,10 @@ Two phases, each run for `--trials` random circuits:
     shared source file; qsimulator samples trajectories where Aer applies the
     channel its own way.
 
+  * **density** — run the same noisy circuit as a density matrix on both sides
+    and compare every entry. Both are exact here, so this checks coherences and
+    not just a distribution — the strictest comparison in the harness.
+
   * **export** — generate a random program in qsimulator's native text format,
     including multi-controlled gates that OpenQASM 2 has no way to write
     directly. qsimulator runs it, while Qiskit runs the program as qsimulator
@@ -29,7 +35,10 @@ Two phases, each run for `--trials` random circuits:
 
 State vectors are compared up to global phase (fidelity), which is the
 physically meaningful notion of state equality and is robust to per-gate
-global-phase conventions. A single mismatch prints the offending program and
+global-phase conventions. Sampled phases are compared by total variation
+distance, with a tolerance set well above the shot noise and well below any
+real disagreement; density matrices are compared entrywise, where only floating
+point separates the two. A single mismatch prints the offending program and
 exits non-zero.
 
 Usage:
@@ -518,6 +527,43 @@ def run_noise_phase(args, binary: str, rng: random.Random) -> float | None:
     return worst
 
 
+def run_density_phase(args, binary: str, rng: random.Random) -> float | None:
+    """Both engines build the same noisy circuit as a density matrix.
+
+    The strongest comparison in the harness: a density matrix is exact on both
+    sides, so this checks every entry — coherences included — rather than a
+    sampled distribution or a diagonal. No tolerance for shot noise is needed,
+    only for floating point.
+    """
+    from qiskit import QuantumCircuit
+    from qiskit.quantum_info import DensityMatrix
+
+    worst = 0.0
+    trials = max(1, args.trials // 10)
+    for trial in range(trials):
+        n_qubits = rng.randint(1, min(3, args.max_qubits))
+        program, qc = random_noisy_circuit(n_qubits, rng.randint(3, 8), rng)
+        # The generator measures at the end for the sampled phases; a density
+        # matrix keeps the dephasing but Qiskit's DensityMatrix rejects the
+        # classical register, so rebuild without it.
+        unmeasured = QuantumCircuit(n_qubits)
+        for item in qc.data:
+            if item.operation.name != "measure":
+                unmeasured.append(item.operation, item.qubits)
+
+        raw = json.loads(qsim(["--density"], program, binary))
+        mine = np.array([complex(re, im) for re, im in raw]).reshape(2**n_qubits, -1)
+        theirs = np.asarray(DensityMatrix(unmeasured).data)
+
+        difference = float(np.max(np.abs(mine - theirs)))
+        worst = max(worst, difference)
+        if difference > args.tol:
+            print(f"FAIL (density trial {trial}): max entry difference {difference:.3e}")
+            print(program)
+            return None
+    return worst
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--trials", type=int, default=500, help="trials per phase")
@@ -568,6 +614,14 @@ def main() -> int:
     print(
         f"OK: {max(1, args.trials // 10)} noise trials agree with Aer "
         f"(worst total variation {worst:.4f}, tol {args.noise_tol:g})"
+    )
+
+    worst = run_density_phase(args, binary, rng)
+    if worst is None:
+        return 1
+    print(
+        f"OK: {max(1, args.trials // 10)} density trials match Qiskit entrywise "
+        f"(worst entry difference {worst:.3e}, tol {args.tol:g})"
     )
     return 0
 

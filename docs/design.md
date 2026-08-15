@@ -278,6 +278,38 @@ OpenQASM 2 has no syntax for a channel, so exporting a noisy circuit returns
 from the one that ran. That is also why the noise cross-validation phase builds
 its Qiskit circuit directly instead of sharing a source file.
 
+## Density matrices
+
+`DensityMatrix` is the second backend. Where a state vector must sample one
+Kraus operator per shot, `rho` carries the mixture itself, so a channel is
+applied exactly: `rho -> sum_i K_i rho K_i^dagger` in one step, with no
+sampling error and no shots. `purity` (`Tr(rho^2)`) then measures directly how
+much the noise cost — 1 for a pure state, `1/2^n` for the maximally mixed one.
+
+Unitary evolution is conjugation, `rho -> U rho U^dagger`, done as two sweeps
+over the same butterfly: `U` along the row index, then `conj(U)` along the
+column index. That reuses one routine instead of materializing `U rho` and
+multiplying again.
+
+The cost is `4^n` entries against `2^n`, so the ceiling is
+`MAX_DENSITY_QUBITS` = 12 (~268 MB) rather than 30. Twelve qubits here is the
+same memory as twenty-four there.
+
+Two boundaries are worth stating:
+
+- **An unread measurement is exact.** It is precisely the channel
+  `rho -> P_0 rho P_0 + P_1 rho P_1`, which erases coherence between outcomes
+  and is deterministic. So is `reset`. Neither needs sampling here.
+- **Classical feed-forward is not representable.** Branching on an outcome
+  needs a distribution over classical registers, each with its own matrix;
+  `rho` alone has no classical state. `run_density` returns
+  `DensityError::ClassicalFeedForward` rather than approximating it, and such
+  a circuit should be sampled instead.
+
+Because both backends are exact for unitaries and both implement the same
+channels, they check each other: the tests assert that trajectory sampling
+converges to what the density matrix says exactly.
+
 ## Roadmap
 
 Nothing outstanding. The OpenQASM bridge is complete in both directions: every
@@ -285,9 +317,9 @@ builder gate exports, and every gate Qiskit emits — including `gate`
 declarations and the whole of `qelib1` — imports. `measure`, `reset` and `if`
 are all honoured, leaving only `opaque`, which declares no body to simulate.
 
-Noise is simulated by trajectories. A density-matrix backend would make noisy
-results exact rather than sampled, at `2^n x 2^n` memory; worth it only if
-exactness at small `n` matters more than reach.
+Both noise backends now exist — trajectories for reach, density matrices for
+exactness — so the remaining direction is OpenQASM 3, or making feed-forward
+representable in the density backend by carrying a classical mixture.
 
 ### Not planned: a SIMD fast path
 
