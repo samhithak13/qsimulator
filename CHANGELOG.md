@@ -6,6 +6,13 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-14
+
+A second backend. 0.5.0 added noise by trajectories, which reach far but only
+converge; a density matrix carries the mixture itself, so the same channels are
+exact — no shots, no sampling error. The two trade against each other: `4^n`
+memory for exactness, `2^n` for reach, and the tests assert they agree.
+
 ### Added
 - A density-matrix backend (`density::DensityMatrix`, `Circuit::run_density`,
   `qsimulator --density`). Where the state vector samples one trajectory
@@ -225,7 +232,8 @@ Initial release.
   macOS covering formatting, clippy (`-D warnings`), a warning-clean
   `cargo doc`, tests, examples, cross-validation, fuzzing, and `cargo audit`.
 
-[Unreleased]: https://github.com/samhithak13/qsimulator/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/samhithak13/qsimulator/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/samhithak13/qsimulator/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/samhithak13/qsimulator/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/samhithak13/qsimulator/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/samhithak13/qsimulator/compare/v0.2.0...v0.3.0
