@@ -6,6 +6,19 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- The density-matrix backend now handles classical feed-forward, which it
+  previously refused. Branching on an outcome correlates the quantum state with
+  the classical value, which one matrix cannot express, so `run_density` carries
+  one unnormalized matrix per reachable register value — its trace being that
+  branch's probability — and sums them at the end. Without a conditional it
+  still keeps a single matrix and dephases in place.
+
+### Changed
+- **Breaking:** `DensityError::ClassicalFeedForward` is replaced by
+  `TooManyBranches`, since feed-forward now works and the remaining limit is
+  how many classical branches can be held at once (each a full `4^n` matrix).
+
 ## [0.6.0] - 2026-08-14
 
 A second backend. 0.5.0 added noise by trajectories, which reach far but only

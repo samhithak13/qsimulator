@@ -76,12 +76,15 @@ importer is validated against the equivalent builder circuit and the
 exporter by round-tripping back through it.
 
 Beyond the in-tree tests, `crossval/compare.py` validates the engine against
-Qiskit in four phases. Two compare state vectors up to global phase — random
+Qiskit in five phases. Two compare state vectors up to global phase — random
 circuits over the shared gate set, and qsimulator's own *exported* form read
-back by Qiskit, which is what checks the decompositions. The other two compare
-sampled distributions against Qiskit Aer, because a circuit that collapses or
-decoheres has no single state vector: one covers mid-circuit measurement,
-reset and classical feed-forward, the other noise channels.
+back by Qiskit, which is what checks the decompositions. Two compare sampled
+distributions against Qiskit Aer, because a circuit that collapses or decoheres
+has no single state vector: one covers mid-circuit measurement, reset and
+classical feed-forward, the other noise channels. The fifth compares density
+matrices entrywise, where both sides are exact and only floating point
+separates them — the strictest of the five, since it reaches coherences a
+distribution never shows.
 
 Each sampled phase was checked against the bug it exists to catch, not just
 for passing: the measurement phase originally agreed with Aer even with the
@@ -134,10 +137,13 @@ cross-validation, parser fuzzing, `cargo audit`, and a coverage floor.
   `gate` bodies need arithmetic over their formal parameters.
 - `src/noise.rs` — the standard single-qubit channels as Kraus operators, and
   the trace-preservation check that rejects a non-physical one.
+- `src/density.rs` — the density-matrix backend: conjugation, exact channels,
+  projection, and the pieces `run_density` composes into a classical mixture.
 - `src/rng.rs` — the seedable RNG.
 - `src/main.rs` — the CLI; dispatches to the QASM importer by `.qasm`
   extension or `OPENQASM` header, otherwise the text format.
-- `tests/` — one file per area: measurement and collapse, noise, rotations,
+- `tests/` — one file per area: measurement and collapse, noise, density
+  matrices, rotations,
   swap, toffoli, the builder groups, diagrams, GHZ, QASM import/export, the
   text program format, the CLI, and property and robustness tests.
 
@@ -300,11 +306,18 @@ Two boundaries are worth stating:
 - **An unread measurement is exact.** It is precisely the channel
   `rho -> P_0 rho P_0 + P_1 rho P_1`, which erases coherence between outcomes
   and is deterministic. So is `reset`. Neither needs sampling here.
-- **Classical feed-forward is not representable.** Branching on an outcome
-  needs a distribution over classical registers, each with its own matrix;
-  `rho` alone has no classical state. `run_density` returns
-  `DensityError::ClassicalFeedForward` rather than approximating it, and such
-  a circuit should be sampled instead.
+- **Classical feed-forward needs more than one matrix.** Branching on an
+  outcome correlates the quantum state with the classical value, which a single
+  `rho` cannot express: after `measure q0; if(c==1) x q1`, qubit 1's state
+  depends on what qubit 0 read. `run_density` therefore carries one
+  unnormalized matrix per reachable register value — its trace being that
+  branch's probability — applies a conditional only to the matching branch, and
+  sums at the end. Without any conditional it keeps a single matrix and
+  dephases in place, since the split would only be summed back together.
+
+  Each branch is a full `4^n` matrix, so the count is capped
+  (`MAX_DENSITY_BRANCHES`) and a circuit measuring many bits before branching
+  on them is refused rather than allocating without bound.
 
 Because both backends are exact for unitaries and both implement the same
 channels, they check each other: the tests assert that trajectory sampling
@@ -317,9 +330,9 @@ builder gate exports, and every gate Qiskit emits — including `gate`
 declarations and the whole of `qelib1` — imports. `measure`, `reset` and `if`
 are all honoured, leaving only `opaque`, which declares no body to simulate.
 
-Both noise backends now exist — trajectories for reach, density matrices for
-exactness — so the remaining direction is OpenQASM 3, or making feed-forward
-representable in the density backend by carrying a classical mixture.
+Both noise backends exist — trajectories for reach, density matrices for
+exactness — and both handle the full instruction set including feed-forward.
+The remaining direction is OpenQASM 3.
 
 ### Not planned: a SIMD fast path
 

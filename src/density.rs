@@ -11,10 +11,12 @@
 //! same footprint as 24 there. That is the whole trade — exactness and mixed
 //! states, against half the reach.
 //!
-//! Measurement and reset are also exact. An outcome nobody reads is the channel
-//! `rho -> P_0 rho P_0 + P_1 rho P_1`, which is deterministic; only classical
-//! feed-forward genuinely needs a sampled outcome, which is why
-//! [`Circuit::run_density`](crate::Circuit::run_density) rejects it.
+//! Measurement and reset are exact too. An outcome nobody reads is the channel
+//! `rho -> P_0 rho P_0 + P_1 rho P_1`, which is deterministic. Classical
+//! feed-forward is exact as well, but needs more than one matrix: the quantum
+//! state becomes correlated with the classical outcome, so
+//! [`Circuit::run_density`](crate::Circuit::run_density) carries one matrix per
+//! reachable register value and sums them at the end.
 
 use num_complex::Complex64;
 
@@ -224,6 +226,36 @@ impl DensityMatrix {
             }
         }
         self.entries = total;
+    }
+
+    /// Project onto qubit `q` reading `outcome`, without renormalizing:
+    /// `rho -> P rho P`.
+    ///
+    /// The trace of the result is the probability of that outcome, which is
+    /// what lets a mixture over classical outcomes carry its own weights.
+    pub fn project(&mut self, q: usize, outcome: bool) {
+        assert!(q < self.n_qubits, "qubit out of range");
+        let mask = 1usize << q;
+        let want = if outcome { mask } else { 0 };
+        let dim = self.dim;
+        for row in 0..dim {
+            for col in 0..dim {
+                if (row & mask) != want || (col & mask) != want {
+                    self.entries[row * dim + col] = Complex64::new(0.0, 0.0);
+                }
+            }
+        }
+    }
+
+    /// Add another matrix into this one, entry by entry.
+    ///
+    /// Used to recombine the branches of a classical mixture; the operands are
+    /// unnormalized, and their traces are the branch weights.
+    pub fn add_assign(&mut self, other: &DensityMatrix) {
+        assert_eq!(self.n_qubits, other.n_qubits, "registers must match");
+        for (a, b) in self.entries.iter_mut().zip(other.entries.iter()) {
+            *a += b;
+        }
     }
 
     /// Measure `q` without reading the outcome: `rho -> P_0 rho P_0 + P_1 rho

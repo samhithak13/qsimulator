@@ -54,12 +54,14 @@ pub enum DensityError {
         /// The largest a density matrix will allocate.
         max: usize,
     },
-    /// A classical conditional. A density matrix carries the quantum mixture
-    /// but no classical outcome to branch on: doing this exactly means tracking
-    /// a distribution over classical registers, each with its own matrix. Run
-    /// such a circuit with [`Circuit::sample`] instead, which takes one branch
-    /// per shot.
-    ClassicalFeedForward,
+    /// Too many distinct classical outcomes to track. Feed-forward is handled
+    /// by carrying one density matrix per reachable classical register value,
+    /// so a circuit measuring many bits before branching on them multiplies
+    /// what has to be held at once.
+    TooManyBranches {
+        /// The cap that was exceeded.
+        max: usize,
+    },
 }
 
 impl fmt::Display for DensityError {
@@ -70,9 +72,10 @@ impl fmt::Display for DensityError {
                 "a density matrix for {qubits} qubits is 4^{qubits} entries, over the \
                  maximum of {max}"
             ),
-            DensityError::ClassicalFeedForward => f.write_str(
-                "cannot run a circuit with a classical conditional as a density matrix; \
-                 sample it instead",
+            DensityError::TooManyBranches { max } => write!(
+                f,
+                "classical feed-forward needs one density matrix per reachable register \
+                 value, and this circuit exceeds the limit of {max}; sample it instead"
             ),
         }
     }
@@ -765,6 +768,38 @@ impl Op {
     }
 }
 
+/// Largest number of distinct classical register values a density-matrix run
+/// will carry at once. Each is a full `4^n` matrix, so this bounds the memory
+/// a circuit that measures many bits before branching can demand.
+const MAX_DENSITY_BRANCHES: usize = 64;
+
+/// Apply one operation to a density matrix. Measurement and conditionals are
+/// handled by the caller, which owns the classical mixture.
+fn apply_density_op(rho: &mut crate::density::DensityMatrix, op: &Op) {
+    match op {
+        Op::Single { gate, target, .. } => rho.apply_1q(gate, *target),
+        Op::Controlled {
+            gate,
+            control,
+            target,
+            ..
+        } => rho.apply_controlled_1q(gate, *control, *target),
+        Op::Swap { a, b } => rho.swap_qubits(*a, *b),
+        Op::MultiControlled {
+            gate,
+            controls,
+            target,
+            ..
+        } => rho.apply_multi_controlled_1q(gate, controls, *target),
+        Op::Reset { qubit } => rho.reset(*qubit),
+        Op::Kraus { ops, qubit, .. } => rho.apply_kraus(ops, *qubit),
+        // A conditional block holds only gates, so nesting cannot occur; a
+        // measurement needs the mixture the caller owns.
+        Op::Measure { qubit, .. } => rho.measure_dephase(*qubit),
+        Op::Conditional { .. } => unreachable!("conditionals are handled by the caller"),
+    }
+}
+
 /// Apply one operation, updating the state and the classical register.
 fn apply_op(state: &mut State, op: &Op, rng: &mut Rng, clbits: &mut u64) {
     match op {
@@ -827,9 +862,11 @@ impl Circuit {
     /// register ceiling is about half; see
     /// [`MAX_DENSITY_QUBITS`](crate::density::MAX_DENSITY_QUBITS).
     ///
-    /// Returns [`DensityError::ClassicalFeedForward`] for a circuit containing
-    /// [`if_classical_eq`](Circuit::if_classical_eq): branching on a measured
-    /// outcome needs a classical register the matrix does not carry.
+    /// Classical feed-forward works too, by carrying one matrix per reachable
+    /// classical register value — the quantum state is correlated with the
+    /// outcome, so a single matrix cannot express it. That costs memory per
+    /// branch, so a circuit measuring many bits before branching on them can
+    /// exceed [`DensityError::TooManyBranches`].
     pub fn run_density(&self) -> Result<crate::density::DensityMatrix, DensityError> {
         if self.n_qubits > crate::density::MAX_DENSITY_QUBITS {
             return Err(DensityError::TooManyQubits {
@@ -837,32 +874,77 @@ impl Circuit {
                 max: crate::density::MAX_DENSITY_QUBITS,
             });
         }
-        let mut rho = crate::density::DensityMatrix::new(self.n_qubits);
-        // Unlike `run`, trailing measurements are applied: dephasing is part of
-        // the state a density matrix describes, and costs nothing to include.
+        // Without feed-forward one matrix suffices: an unread measurement is
+        // just dephasing. With it, the quantum state is correlated with the
+        // classical register, so carry one matrix per reachable register value
+        // — unnormalized, its trace being that branch's probability.
+        let mut branches: HashMap<u64, crate::density::DensityMatrix> = HashMap::new();
+        branches.insert(0, crate::density::DensityMatrix::new(self.n_qubits));
+        let tracks_outcomes = self.has_conditional();
+
         for op in &self.ops {
             match op {
-                Op::Single { gate, target, .. } => rho.apply_1q(gate, *target),
-                Op::Controlled {
-                    gate,
-                    control,
-                    target,
-                    ..
-                } => rho.apply_controlled_1q(gate, *control, *target),
-                Op::Swap { a, b } => rho.swap_qubits(*a, *b),
-                Op::MultiControlled {
-                    gate,
-                    controls,
-                    target,
-                    ..
-                } => rho.apply_multi_controlled_1q(gate, controls, *target),
-                Op::Measure { qubit, .. } => rho.measure_dephase(*qubit),
-                Op::Reset { qubit } => rho.reset(*qubit),
-                Op::Kraus { ops, qubit, .. } => rho.apply_kraus(ops, *qubit),
-                Op::Conditional { .. } => return Err(DensityError::ClassicalFeedForward),
+                Op::Conditional { value, ops } => {
+                    if let Some(rho) = branches.get_mut(value) {
+                        for inner in ops {
+                            apply_density_op(rho, inner);
+                        }
+                    }
+                }
+                Op::Measure { qubit, clbit } => {
+                    if !tracks_outcomes {
+                        // Nothing can read the outcome, so the split would only
+                        // be summed back together: dephase in place instead.
+                        for rho in branches.values_mut() {
+                            rho.measure_dephase(*qubit);
+                        }
+                        continue;
+                    }
+                    let mut split: HashMap<u64, crate::density::DensityMatrix> = HashMap::new();
+                    for (value, rho) in branches.drain() {
+                        for outcome in [false, true] {
+                            let mut branch = rho.clone();
+                            branch.project(*qubit, outcome);
+                            // A branch with no weight is not reachable, and
+                            // keeping it would double the count for nothing.
+                            if branch.trace() < 1e-15 {
+                                continue;
+                            }
+                            let mut key = value & !(1u64 << clbit);
+                            if outcome {
+                                key |= 1u64 << clbit;
+                            }
+                            split
+                                .entry(key)
+                                .and_modify(|existing| existing.add_assign(&branch))
+                                .or_insert(branch);
+                        }
+                    }
+                    branches = split;
+                    if branches.len() > MAX_DENSITY_BRANCHES {
+                        return Err(DensityError::TooManyBranches {
+                            max: MAX_DENSITY_BRANCHES,
+                        });
+                    }
+                }
+                other => {
+                    for rho in branches.values_mut() {
+                        apply_density_op(rho, other);
+                    }
+                }
             }
         }
-        Ok(rho)
+
+        // The state of the register, ignoring which classical value came up,
+        // is the sum over branches — each already weighted by its probability.
+        let mut total = crate::density::DensityMatrix::new(self.n_qubits);
+        let mut drained = branches.into_values();
+        let mut result = drained.next().expect("at least one branch");
+        for rest in drained {
+            result.add_assign(&rest);
+        }
+        std::mem::swap(&mut total, &mut result);
+        Ok(total)
     }
 
     /// Run the circuit `shots` times and return a histogram of measured

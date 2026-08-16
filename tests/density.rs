@@ -270,21 +270,111 @@ fn run_density_matches_run_without_noise() {
     assert!((rho.purity() - 1.0).abs() < 1e-12, "should stay pure");
 }
 
-/// Feed-forward needs a classical outcome the matrix does not carry, so it is
-/// refused rather than approximated.
+/// Feed-forward works by carrying one matrix per classical outcome. Measuring
+/// qubit 0 and flipping qubit 1 when it read |1> correlates the two, so only
+/// |00> and |11> survive — a single matrix could not express that, because the
+/// quantum state depends on the classical value.
 #[test]
-fn feed_forward_is_refused() {
+fn feed_forward_correlates_through_the_mixture() {
     let mut c = Circuit::new(2);
     c.h(0).measure(0);
     c.if_classical_eq(1, |b| {
         b.x(1);
     });
-    assert_eq!(c.run_density(), Err(DensityError::ClassicalFeedForward));
-    assert!(c
-        .run_density()
-        .unwrap_err()
-        .to_string()
-        .contains("sample it instead"));
+
+    let rho = c.run_density().expect("feed-forward is supported");
+    assert!((rho.trace() - 1.0).abs() < 1e-12, "trace {}", rho.trace());
+    assert!((rho.probability(0b00) - 0.5).abs() < 1e-12);
+    assert!((rho.probability(0b11) - 0.5).abs() < 1e-12);
+    assert!(rho.probability(0b01).abs() < 1e-12);
+    assert!(rho.probability(0b10).abs() < 1e-12);
+
+    // The result is a classical mixture, not a Bell state: purity 1/2, where
+    // an entangled pure state would still be 1.
+    assert!(
+        (rho.purity() - 0.5).abs() < 1e-12,
+        "purity {}",
+        rho.purity()
+    );
+}
+
+/// Teleportation is the real test of feed-forward: the payload has to arrive on
+/// qubit 2 exactly, whichever Bell outcome came up, and the density matrix
+/// averages over all four at once.
+#[test]
+fn teleportation_is_exact_under_feed_forward() {
+    let theta = 0.7_f64;
+    let mut c = Circuit::new(3);
+    c.ry(theta, 0);
+    c.h(1).cnot(1, 2);
+    c.cnot(0, 1).h(0);
+    c.measure(0).measure(1);
+    c.if_classical_eq(0b10, |b| {
+        b.x(2);
+    });
+    c.if_classical_eq(0b01, |b| {
+        b.z(2);
+    });
+    c.if_classical_eq(0b11, |b| {
+        b.x(2).z(2);
+    });
+
+    let rho = c.run_density().expect("feed-forward is supported");
+    let expected = (theta / 2.0).sin().powi(2);
+    assert!(
+        (rho.prob_qubit_one(2) - expected).abs() < 1e-12,
+        "teleported P(|1>) = {} not {expected}",
+        rho.prob_qubit_one(2)
+    );
+    assert!((rho.trace() - 1.0).abs() < 1e-12);
+}
+
+/// The mixture agrees with sampling the same circuit, exactly against
+/// statistically.
+#[test]
+fn feed_forward_matches_sampling() {
+    let mut c = Circuit::new(3);
+    c.h(0).h(1).depolarizing(0.2, 2);
+    c.measure(0).measure(1);
+    c.if_classical_eq(0b11, |b| {
+        b.x(2);
+    });
+    c.if_classical_eq(0b01, |b| {
+        b.h(2);
+    });
+
+    let rho = c.run_density().unwrap();
+    let shots = 60_000;
+    let hist = c.sample(shots, 31);
+    for i in 0..8 {
+        let sampled = hist.get(&i).copied().unwrap_or(0) as f64 / shots as f64;
+        assert!(
+            (sampled - rho.probability(i)).abs() < 0.02,
+            "basis {i}: sampled {sampled:.4} vs exact {:.4}",
+            rho.probability(i)
+        );
+    }
+}
+
+/// Branch count is bounded: each reachable classical value is a full matrix, so
+/// a circuit measuring many bits before branching is refused rather than
+/// allocating without limit.
+#[test]
+fn too_many_branches_is_refused() {
+    let mut c = Circuit::new(8);
+    for q in 0..8 {
+        c.h(q);
+    }
+    for q in 0..8 {
+        c.measure(q);
+    }
+    c.if_classical_eq(0, |b| {
+        b.x(0);
+    });
+    match c.run_density() {
+        Err(DensityError::TooManyBranches { max }) => assert_eq!(max, 64),
+        other => panic!("expected TooManyBranches, got {other:?}"),
+    }
 }
 
 /// Too large a register is refused with the numbers, rather than attempting a
