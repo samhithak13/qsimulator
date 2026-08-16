@@ -6,6 +6,13 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-15
+
+OpenQASM 3 on the way in, and the density backend finishes the job it started:
+classical feed-forward is exact there too, by carrying one matrix per reachable
+classical value. Plus the fixes from a review pass over the last two releases,
+two of which were silent-wrong-answer paths.
+
 ### Fixed
 - OpenQASM version detection scanned raw lines, so a comment whose line began
   with `OPENQASM 3` routed a valid OpenQASM 2 file to the OpenQASM 3 front end
@@ -276,7 +283,8 @@ Initial release.
   macOS covering formatting, clippy (`-D warnings`), a warning-clean
   `cargo doc`, tests, examples, cross-validation, fuzzing, and `cargo audit`.
 
-[Unreleased]: https://github.com/samhithak13/qsimulator/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/samhithak13/qsimulator/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/samhithak13/qsimulator/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/samhithak13/qsimulator/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/samhithak13/qsimulator/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/samhithak13/qsimulator/compare/v0.3.0...v0.4.0
