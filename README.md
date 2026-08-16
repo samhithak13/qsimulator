@@ -3,10 +3,15 @@
 [![CI](https://github.com/samhithak13/qsimulator/actions/workflows/ci.yml/badge.svg)](https://github.com/samhithak13/qsimulator/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/samhithak13/qsimulator/blob/main/LICENSE)
 
-A noiseless quantum circuit simulator in Rust. It holds the full `2^n` state
-vector of an *n*-qubit register, applies unitary gates, measures in the
-computational basis, and reads and writes OpenQASM 2.0. The priority is being
-correct and readable, not fast.
+A quantum circuit simulator in Rust. It holds the full `2^n` state vector of an
+*n*-qubit register, applies gates, measures and resets mid-circuit, branches on
+the result, and simulates noise — by quantum trajectories on the state vector,
+or exactly on a density matrix. It reads OpenQASM 2 and 3 and writes OpenQASM 2.
+The priority is being correct and readable, not fast.
+
+Every result is cross-validated against Qiskit on each CI run: state vectors and
+density matrices entrywise, and sampled distributions against Qiskit Aer for the
+circuits that collapse or decohere.
 
 ## Example
 

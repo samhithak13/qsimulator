@@ -14,6 +14,11 @@ classical value. Plus the fixes from a review pass over the last two releases,
 two of which were silent-wrong-answer paths.
 
 ### Fixed
+- The crate described itself as *noiseless* in its `Cargo.toml` description and
+  on its documentation front page — the two places crates.io and docs.rs show
+  first — which had been false since 0.5.0 added noise and 0.6.0 a density
+  backend. Both now say what the crate does, and the front page lists the
+  `noise`, `density` and `qasm3` modules it had been omitting.
 - OpenQASM version detection scanned raw lines, so a comment whose line began
   with `OPENQASM 3` routed a valid OpenQASM 2 file to the OpenQASM 3 front end
   — where its single-statement `if` was then rejected for having no braces.
