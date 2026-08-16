@@ -171,7 +171,7 @@ fn parse_inner(src: &str) -> Result<Circuit, String> {
 /// it. Splitting naively on `;` therefore glues that trailing `}` onto whatever
 /// follows — and since `gate` blocks conventionally precede `qreg`, the register
 /// declaration would vanish into a fragment starting with `}`.
-fn split_statements(src: &str) -> Result<Vec<&str>, String> {
+pub(crate) fn split_statements(src: &str) -> Result<Vec<&str>, String> {
     let mut statements = Vec::new();
     let mut depth = 0usize;
     let mut start = 0usize;
@@ -920,7 +920,7 @@ fn parse_qubit_ref(op: &str, regs: &HashMap<String, Reg>) -> Result<usize, Strin
 }
 
 /// Remove `//` line comments and `/* ... */` block comments (UTF-8 safe).
-fn strip_comments(src: &str) -> String {
+pub(crate) fn strip_comments(src: &str) -> String {
     let mut out = String::with_capacity(src.len());
     let mut chars = src.chars().peekable();
     let mut in_block = false;

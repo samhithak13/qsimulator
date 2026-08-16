@@ -7,6 +7,16 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- OpenQASM 3 import (`qasm3::parse`), dispatched from the version header. The
+  two languages differ mainly in declarations, so rather than duplicate the
+  gate table this rewrites `qubit[n]`/`bit[n]` declarations, measurement as
+  assignment, and braced conditionals into the OpenQASM 2 subset and reuses
+  that importer. Constructs with no counterpart — `for`, `while`, `def`,
+  `else`, timing — are reported by name. Programs Qiskit's OpenQASM 3 exporter
+  produces, `gate` blocks included, now import.
+- A sixth cross-validation phase: a random OpenQASM 2 program re-emitted as
+  OpenQASM 3 by Qiskit and read back, so the front end is checked against real
+  exporter output rather than invented input.
 - The density-matrix backend now handles classical feed-forward, which it
   previously refused. Branching on an outcome correlates the quantum state with
   the classical value, which one matrix cannot express, so `run_density` carries

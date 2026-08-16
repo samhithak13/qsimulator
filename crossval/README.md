@@ -12,6 +12,10 @@ as an independent reference implementation. It runs two phases, each for
   the program; Qiskit runs it as qsimulator exports it (`--emit-qasm`), that is
   after decomposition. Checks that a decomposed export still means the same
   thing to another tool.
+- **qasm3** — a random OpenQASM 2 program, re-emitted as OpenQASM 3 by Qiskit
+  and read back. The input is real exporter output — `gate` blocks, `qubit[n]`
+  declarations, `bit[n]`, measurement-as-assignment — rather than something the
+  harness invented, so it checks the OpenQASM 3 front end end to end.
 - **density** — the same noisy circuit run as a density matrix on both sides,
   compared entry by entry. Both are exact here, so this checks coherences and
   not just a distribution: it is the strictest comparison in the harness, and

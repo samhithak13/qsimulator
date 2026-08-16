@@ -76,15 +76,15 @@ importer is validated against the equivalent builder circuit and the
 exporter by round-tripping back through it.
 
 Beyond the in-tree tests, `crossval/compare.py` validates the engine against
-Qiskit in five phases. Two compare state vectors up to global phase — random
+Qiskit in six phases. Two compare state vectors up to global phase — random
 circuits over the shared gate set, and qsimulator's own *exported* form read
 back by Qiskit, which is what checks the decompositions. Two compare sampled
 distributions against Qiskit Aer, because a circuit that collapses or decoheres
 has no single state vector: one covers mid-circuit measurement, reset and
-classical feed-forward, the other noise channels. The fifth compares density
-matrices entrywise, where both sides are exact and only floating point
-separates them — the strictest of the five, since it reaches coherences a
-distribution never shows.
+classical feed-forward, the other noise channels. One compares density matrices entrywise, where
+both sides are exact and only floating point separates them — the strictest,
+since it reaches coherences a distribution never shows. The last reads back
+OpenQASM 3 as Qiskit emits it.
 
 Each sampled phase was checked against the bug it exists to catch, not just
 for passing: the measurement phase originally agreed with Aer even with the
@@ -133,6 +133,7 @@ cross-validation, parser fuzzing, `cargo audit`, and a coverage floor.
 - `src/program.rs` — the text program parser (`parse`, `Program`,
   `SampleSpec`); `parse_angle` is shared with the QASM importer.
 - `src/qasm.rs` — the OpenQASM 2.0 subset importer.
+- `src/qasm3.rs` — OpenQASM 3, normalized into that subset.
 - `src/expr.rs` — the angle expression evaluator, shared by both front ends;
   `gate` bodies need arithmetic over their formal parameters.
 - `src/noise.rs` — the standard single-qubit channels as Kraus operators, and
@@ -323,6 +324,34 @@ Because both backends are exact for unitaries and both implement the same
 channels, they check each other: the tests assert that trajectory sampling
 converges to what the density matrix says exactly.
 
+## OpenQASM 3
+
+The two languages differ in how they *declare* far more than in what they *do*.
+Gate calls, `gate` declarations, angle expressions and `reset` read the same,
+and `stdgates.inc` overlaps `qelib1.inc` almost exactly — `p` and `cp` are the
+OpenQASM 3 spellings of `u1` and `cu1`, which the importer already accepted.
+
+So `qasm3` does not duplicate the gate table, the operand parsing or the
+expression evaluator. It rewrites the handful of constructs that differ and
+hands the result to the OpenQASM 2 importer:
+
+| OpenQASM 3              | rewritten to                |
+|-------------------------|-----------------------------|
+| `qubit[n] q;`           | `qreg q[n];`                |
+| `bit[n] c;`             | `creg c[n];`                |
+| `c[i] = measure q[j];`  | `measure q[j] -> c[i];`     |
+| `if (c == v) { a; b; }` | `if(c==v) a; if(c==v) b;`   |
+
+The last is exact rather than approximate, for the same reason export guards
+each line of a conditional block: a block holds only gates, so nothing inside
+can change the value being tested.
+
+Constructs with no OpenQASM 2 counterpart — `for`, `while`, `def`, `else`,
+physical qubits, timing — are reported by name rather than ignored. `else` is
+worth noting: a statement ends at its closing brace, so an `else` clause
+arrives as a statement of its own rather than as part of the `if`, and is
+caught there.
+
 ## Roadmap
 
 Nothing outstanding. The OpenQASM bridge is complete in both directions: every
@@ -332,7 +361,9 @@ are all honoured, leaving only `opaque`, which declares no body to simulate.
 
 Both noise backends exist — trajectories for reach, density matrices for
 exactness — and both handle the full instruction set including feed-forward.
-The remaining direction is OpenQASM 3.
+OpenQASM 3 is read for the subset that maps onto OpenQASM 2; the rest of that
+language (loops, subroutines, classical arithmetic, timing) would need a real
+classical execution model rather than a normalizer.
 
 ### Not planned: a SIMD fast path
 

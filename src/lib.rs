@@ -29,6 +29,7 @@ pub mod gates;
 pub mod noise;
 pub mod program;
 pub mod qasm;
+pub mod qasm3;
 pub mod rng;
 pub mod state;
 

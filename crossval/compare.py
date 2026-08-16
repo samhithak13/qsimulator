@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Cross-validate qsimulator against Qiskit over the OpenQASM 2.0 bridge.
 
-Five phases. The two exact ones run `--trials` circuits each; the three that
+Six phases. The three exact ones run `--trials` circuits each; the three that
 need Qiskit Aer or a density matrix run a tenth of that, since each samples
 `--shots` on both sides or allocates `4^n` entries:
 
@@ -26,6 +26,11 @@ need Qiskit Aer or a density matrix run a tenth of that, since each samples
   * **density** — run the same noisy circuit as a density matrix on both sides
     and compare every entry. Both are exact here, so this checks coherences and
     not just a distribution — the strictest comparison in the harness.
+
+  * **qasm3** — take a random OpenQASM 2 program, have Qiskit re-emit it as
+    OpenQASM 3, and read that back. The input is real exporter output — `gate`
+    blocks, `qubit[n]` declarations and all — rather than something this
+    harness invented, so it checks the OpenQASM 3 front end end to end.
 
   * **export** — generate a random program in qsimulator's native text format,
     including multi-controlled gates that OpenQASM 2 has no way to write
@@ -564,6 +569,38 @@ def run_density_phase(args, binary: str, rng: random.Random) -> float | None:
     return worst
 
 
+def run_qasm3_phase(args, binary: str, rng: random.Random) -> float | None:
+    """qsimulator reads OpenQASM 3 as Qiskit writes it.
+
+    The generator makes an OpenQASM 2 program, has Qiskit re-emit it as
+    OpenQASM 3, and feeds that to qsimulator — so the input is real exporter
+    output, `gate` blocks and all, rather than something this harness invented.
+    Comparing against Qiskit's own state vector then checks the whole path.
+    """
+    from qiskit import qasm2, qasm3
+    from qiskit.quantum_info import Statevector
+
+    worst = 1.0
+    for trial in range(args.trials):
+        n_qubits = rng.randint(1, args.max_qubits)
+        source = random_qasm(n_qubits, rng.randint(2 * n_qubits, 5 * n_qubits), rng)
+        circuit = qasm2.loads(source, custom_instructions=qasm2.LEGACY_CUSTOM_INSTRUCTIONS)
+        as_three = qasm3.dumps(circuit)
+
+        f = compare(
+            "qasm3",
+            trial,
+            as_three,
+            qsim_statevector(as_three, binary),
+            np.asarray(Statevector(circuit).data, dtype=complex),
+            args.tol,
+        )
+        if f is None:
+            return None
+        worst = min(worst, f)
+    return worst
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--trials", type=int, default=500, help="trials per phase")
@@ -591,7 +628,11 @@ def main() -> int:
     binary = args.binary or build_binary()
     rng = random.Random(args.seed)
 
-    for label, phase in (("gates", run_gate_phase), ("export", run_export_phase)):
+    for label, phase in (
+        ("gates", run_gate_phase),
+        ("qasm3", run_qasm3_phase),
+        ("export", run_export_phase),
+    ):
         worst = phase(args, binary, rng)
         if worst is None:
             return 1

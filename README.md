@@ -154,10 +154,11 @@ qsimulator --shots 1000 --seed 42 programs/bell.qasm
 `--shots` overrides the program's own `sample` directive; `--seed` on its own
 re-seeds it. Sampling is a pure function of the seed, so a run repeats exactly.
 
-## OpenQASM 2.0
+## OpenQASM 2.0 and 3
 
 A file ending in `.qasm`, or one starting with an `OPENQASM` header, is parsed
-as an OpenQASM 2.0 subset — enough for hand-written textbook circuits:
+as OpenQASM — the version in the header picks 2 or 3. The supported subset is
+enough for hand-written textbook circuits and for what Qiskit exports:
 
 ```text
 OPENQASM 2.0;

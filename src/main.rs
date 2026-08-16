@@ -5,7 +5,7 @@
 //! `qsimulator::program` module for the format.
 
 use qsimulator::program::{self, SampleSpec};
-use qsimulator::{qasm, Circuit};
+use qsimulator::{qasm, qasm3, Circuit};
 use std::io::Read;
 use std::process::ExitCode;
 
@@ -200,7 +200,13 @@ fn load_circuit(path: &str) -> Result<(Circuit, Option<SampleSpec>), Box<dyn std
     let src = read_source(path).map_err(|e| format!("cannot read {path}: {e}"))?;
     let is_qasm = path.ends_with(".qasm") || src.trim_start().starts_with("OPENQASM");
     if is_qasm {
-        Ok((qasm::parse(&src)?, None))
+        // Both languages start with an `OPENQASM` header; the version picks
+        // the front end.
+        if qasm3::is_openqasm3(&src) {
+            Ok((qasm3::parse(&src)?, None))
+        } else {
+            Ok((qasm::parse(&src)?, None))
+        }
     } else {
         let prog = program::parse(&src)?;
         Ok((prog.circuit, prog.sample))
@@ -327,8 +333,9 @@ OPTIONS:
                                exactly. On its own, re-seeds the program's own
                                `sample` directive.
 
-An input is treated as OpenQASM 2.0 if it ends in `.qasm` or begins with an
-`OPENQASM` header (see programs/bell.qasm); otherwise the native format below.
+An input is treated as OpenQASM if it ends in `.qasm` or begins with an
+`OPENQASM` header (see programs/bell.qasm); the version in that header picks
+OpenQASM 2 or 3. Otherwise the native format below is used.
 
 PROGRAM FORMAT (one instruction per line; `#` starts a comment):
     qubits N                   Declare the register size (must come first)
