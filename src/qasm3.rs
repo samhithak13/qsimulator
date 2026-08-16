@@ -38,10 +38,14 @@ pub fn parse(src: &str) -> Result<Circuit, ParseError> {
 }
 
 /// Whether `src` looks like OpenQASM 3 rather than 2, by its version header.
+///
+/// Comments are stripped first: a line *inside* a comment can begin with
+/// `OPENQASM`, and reading it would route a perfectly good OpenQASM 2 file to
+/// the wrong front end.
 pub fn is_openqasm3(src: &str) -> bool {
-    for line in src.lines() {
-        let line = line.trim();
-        if let Some(rest) = line.strip_prefix("OPENQASM") {
+    let clean = qasm::strip_comments(src);
+    for line in clean.lines() {
+        if let Some(rest) = line.trim().strip_prefix("OPENQASM") {
             return rest.trim_start().starts_with('3');
         }
     }

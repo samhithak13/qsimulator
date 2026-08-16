@@ -154,3 +154,32 @@ fn malformed_declarations_are_reported() {
         assert!(err.contains(needle), "for `{src}`: {err}");
     }
 }
+
+/// Regression: version detection used to scan raw lines, so a comment whose
+/// line began with `OPENQASM 3` sent a perfectly good OpenQASM 2 file to the
+/// wrong front end — where its single-statement `if` was then rejected for
+/// having no braces.
+#[test]
+fn a_comment_does_not_pick_the_parser() {
+    let src = "\
+/*
+OPENQASM 3 was the original source language.
+This file is the OpenQASM 2 translation.
+*/
+OPENQASM 2.0;
+qreg q[1];
+creg c[1];
+h q[0];
+measure q[0] -> c[0];
+if(c==1) x q[0];
+";
+    assert!(
+        !qasm3::is_openqasm3(src),
+        "comment text must not select OpenQASM 3"
+    );
+    qasm::parse(src).expect("a valid OpenQASM 2 file must still parse");
+
+    // And a real OpenQASM 3 header is still found when a comment precedes it.
+    let three = "// a leading note\n/* and a block */\nOPENQASM 3.0;\nqubit[1] q;\n";
+    assert!(qasm3::is_openqasm3(three));
+}

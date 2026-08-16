@@ -60,6 +60,14 @@ impl DensityMatrix {
         }
     }
 
+    /// A matrix of zeros — not a physical state, but the identity for summing
+    /// the branches of a classical mixture.
+    pub(crate) fn zeros(n_qubits: usize) -> Self {
+        let mut rho = DensityMatrix::new(n_qubits);
+        rho.entries[0] = Complex64::new(0.0, 0.0);
+        rho
+    }
+
     /// The pure state `|psi><psi|` for a state vector.
     pub fn from_state(state: &crate::State) -> Self {
         let n_qubits = state.n_qubits();
@@ -217,11 +225,15 @@ impl DensityMatrix {
             "a channel needs at least one Kraus operator"
         );
 
+        // One scratch matrix, refilled from `self` each time, rather than a
+        // fresh clone per operator: depolarizing has four, and at the register
+        // ceiling each clone is hundreds of megabytes.
         let mut total = vec![Complex64::new(0.0, 0.0); self.entries.len()];
+        let mut scratch = self.clone();
         for k in ops {
-            let mut branch = self.clone();
-            branch.apply_masked(k, 0, target);
-            for (acc, term) in total.iter_mut().zip(branch.entries.iter()) {
+            scratch.entries.copy_from_slice(&self.entries);
+            scratch.apply_masked(k, 0, target);
+            for (acc, term) in total.iter_mut().zip(scratch.entries.iter()) {
                 *acc += term;
             }
         }

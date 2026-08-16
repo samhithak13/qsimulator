@@ -6,6 +6,27 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- OpenQASM version detection scanned raw lines, so a comment whose line began
+  with `OPENQASM 3` routed a valid OpenQASM 2 file to the OpenQASM 3 front end
+  — where its single-statement `if` was then rejected for having no braces.
+  Comments are stripped before the header is read.
+- `Circuit::measure_into` did not validate its classical bit. An out-of-range
+  one asserted in the state-vector backend but silently wrapped the shift in a
+  release build of the density backend, recording the outcome in the wrong bit
+  and firing a guard that should not have fired. It is now rejected where it
+  enters, so the two backends cannot disagree.
+- The density mixture capped the number of classical branches but not their
+  size, and checked only after building the split. At the 12-qubit ceiling 64
+  branches is around 17 GB, so the process died before the limit could report
+  anything. The allowance now scales with `4^n` and is checked as the split is
+  built.
+- `run_density` allocated a whole `4^n` matrix only to swap it away, and would
+  panic rather than return if every branch were pruned as weightless.
+- `DensityMatrix::apply_kraus` cloned the entire matrix once per Kraus
+  operator; it reuses one scratch buffer, cutting peak memory for a four-
+  operator channel by roughly a third.
+
 ### Added
 - OpenQASM 3 import (`qasm3::parse`), dispatched from the version header. The
   two languages differ mainly in declarations, so rather than duplicate the

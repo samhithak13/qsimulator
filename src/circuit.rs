@@ -624,7 +624,19 @@ impl Circuit {
     /// [`measure`](Circuit::measure) writes qubit `i` to bit `i`. Use this when
     /// the destination differs — an imported program may compact several
     /// measurements into low bits.
+    ///
+    /// # Panics
+    ///
+    /// If `clbit` is outside that register. Validating here rather than at run
+    /// time keeps the two backends from disagreeing: an out-of-range bit used
+    /// to assert in the state-vector path but silently wrap the shift in a
+    /// release build of the density one.
     pub fn measure_into(&mut self, qubit: usize, clbit: usize) -> &mut Self {
+        assert!(
+            clbit < self.n_qubits,
+            "classical bit {clbit} is outside the register, which is {} bits wide",
+            self.n_qubits
+        );
         self.ops.push(Op::Measure { qubit, clbit });
         self
     }
@@ -769,9 +781,22 @@ impl Op {
 }
 
 /// Largest number of distinct classical register values a density-matrix run
-/// will carry at once. Each is a full `4^n` matrix, so this bounds the memory
-/// a circuit that measures many bits before branching can demand.
+/// will carry at once, whatever the register size.
 const MAX_DENSITY_BRANCHES: usize = 64;
+
+/// Ceiling on the *total* entries a classical mixture may hold, about a
+/// gigabyte at 16 bytes each.
+///
+/// Counting branches alone does not bound memory: each is a full `4^n` matrix,
+/// so 64 of them at the 12-qubit ceiling is around 17 GB — the process would be
+/// killed long before a count-based limit could report anything.
+const MAX_DENSITY_MIXTURE_ENTRIES: usize = 1 << 26;
+
+/// How many branches fit the budget at this register size.
+fn branch_allowance(n_qubits: usize) -> usize {
+    let entries = 1usize << (2 * n_qubits);
+    (MAX_DENSITY_MIXTURE_ENTRIES / entries).clamp(1, MAX_DENSITY_BRANCHES)
+}
 
 /// Apply one operation to a density matrix. Measurement and conditionals are
 /// handled by the caller, which owns the classical mixture.
@@ -793,9 +818,11 @@ fn apply_density_op(rho: &mut crate::density::DensityMatrix, op: &Op) {
         } => rho.apply_multi_controlled_1q(gate, controls, *target),
         Op::Reset { qubit } => rho.reset(*qubit),
         Op::Kraus { ops, qubit, .. } => rho.apply_kraus(ops, *qubit),
-        // A conditional block holds only gates, so nesting cannot occur; a
-        // measurement needs the mixture the caller owns.
-        Op::Measure { qubit, .. } => rho.measure_dephase(*qubit),
+        // Both are handled by the caller, which owns the classical mixture: a
+        // measurement splits branches rather than dephasing, and a conditional
+        // selects one. Dephasing here would silently drop the correlation
+        // between the quantum state and the classical outcome.
+        Op::Measure { .. } => unreachable!("measurements are handled by the caller"),
         Op::Conditional { .. } => unreachable!("conditionals are handled by the caller"),
     }
 }
@@ -900,6 +927,7 @@ impl Circuit {
                         }
                         continue;
                     }
+                    let allowed = branch_allowance(self.n_qubits);
                     let mut split: HashMap<u64, crate::density::DensityMatrix> = HashMap::new();
                     for (value, rho) in branches.drain() {
                         for outcome in [false, true] {
@@ -918,14 +946,14 @@ impl Circuit {
                                 .entry(key)
                                 .and_modify(|existing| existing.add_assign(&branch))
                                 .or_insert(branch);
+                            // Checked as the split is built, not after: waiting
+                            // would mean allocating the whole doubled set first.
+                            if split.len() > allowed {
+                                return Err(DensityError::TooManyBranches { max: allowed });
+                            }
                         }
                     }
                     branches = split;
-                    if branches.len() > MAX_DENSITY_BRANCHES {
-                        return Err(DensityError::TooManyBranches {
-                            max: MAX_DENSITY_BRANCHES,
-                        });
-                    }
                 }
                 other => {
                     for rho in branches.values_mut() {
@@ -935,15 +963,18 @@ impl Circuit {
             }
         }
 
-        // The state of the register, ignoring which classical value came up,
-        // is the sum over branches — each already weighted by its probability.
-        let mut total = crate::density::DensityMatrix::new(self.n_qubits);
-        let mut drained = branches.into_values();
-        let mut result = drained.next().expect("at least one branch");
-        for rest in drained {
-            result.add_assign(&rest);
+        // The state of the register, ignoring which classical value came up, is
+        // the sum over branches — each already weighted by its probability. The
+        // first branch becomes the accumulator, so summing costs no extra
+        // matrix; an empty mixture (every branch pruned as weightless) gives
+        // zeros rather than a panic.
+        let mut remaining = branches.into_values();
+        let mut total = remaining
+            .next()
+            .unwrap_or_else(|| crate::density::DensityMatrix::zeros(self.n_qubits));
+        for rest in remaining {
+            total.add_assign(&rest);
         }
-        std::mem::swap(&mut total, &mut result);
         Ok(total)
     }
 
@@ -1433,5 +1464,47 @@ fn center(token: &str, width: usize) -> String {
 impl fmt::Display for Circuit {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.diagram())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The mixture allowance has to fall as the register grows, or the cap
+    /// bounds a count while the memory runs away: 64 branches at 12 qubits is
+    /// around 17 GB. Checked as a function rather than by running such a
+    /// circuit, which is the point — the allocation is what we are avoiding.
+    #[test]
+    fn branch_allowance_shrinks_with_register_size() {
+        // Small registers are limited by the branch count, not by memory.
+        assert_eq!(branch_allowance(1), MAX_DENSITY_BRANCHES);
+        assert_eq!(branch_allowance(10), MAX_DENSITY_BRANCHES);
+
+        // Large ones are limited by memory, and never to nothing.
+        let mut previous = branch_allowance(10);
+        for n in 11..=crate::density::MAX_DENSITY_QUBITS {
+            let allowance = branch_allowance(n);
+            assert!(allowance >= 1, "{n} qubits allows no branch at all");
+            assert!(
+                allowance <= previous,
+                "{n} qubits allows more than {}",
+                n - 1
+            );
+            previous = allowance;
+        }
+        assert!(
+            branch_allowance(crate::density::MAX_DENSITY_QUBITS) < MAX_DENSITY_BRANCHES,
+            "the ceiling must be memory-bound, not count-bound"
+        );
+
+        // Whatever the size, the mixture stays inside the budget.
+        for n in 1..=crate::density::MAX_DENSITY_QUBITS {
+            let entries = branch_allowance(n) * (1usize << (2 * n));
+            assert!(
+                entries <= MAX_DENSITY_MIXTURE_ENTRIES || branch_allowance(n) == 1,
+                "{n} qubits budgets {entries} entries"
+            );
+        }
     }
 }

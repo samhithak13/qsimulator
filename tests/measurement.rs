@@ -333,3 +333,25 @@ fn conditional_block_rejects_nesting() {
         });
     });
 }
+
+/// Regression: an out-of-range classical bit used to assert in the state-vector
+/// backend but silently wrap the shift in a release build of the density one,
+/// writing the outcome to the wrong bit. It is rejected where it enters now, so
+/// the two backends cannot disagree.
+#[test]
+#[should_panic(expected = "outside the register")]
+fn measure_into_rejects_a_classical_bit_outside_the_register() {
+    Circuit::new(2).measure_into(0, 64);
+}
+
+/// The in-range destinations still work, including the compacted form an
+/// imported program uses.
+#[test]
+fn measure_into_accepts_any_bit_of_the_register() {
+    let mut c = Circuit::new(3);
+    c.x(2).measure_into(2, 0);
+    c.if_classical_eq(1, |b| {
+        b.x(0);
+    });
+    assert_relative_eq!(c.run().probability(0b101), 1.0, epsilon = 1e-12);
+}

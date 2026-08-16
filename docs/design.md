@@ -316,9 +316,11 @@ Two boundaries are worth stating:
   sums at the end. Without any conditional it keeps a single matrix and
   dephases in place, since the split would only be summed back together.
 
-  Each branch is a full `4^n` matrix, so the count is capped
-  (`MAX_DENSITY_BRANCHES`) and a circuit measuring many bits before branching
-  on them is refused rather than allocating without bound.
+  Each branch is a full `4^n` matrix, so the allowance scales with the register
+  rather than being a flat count: 64 branches is fine at 10 qubits and around
+  17 GB at 12. `branch_allowance` divides a fixed entry budget by `4^n`, and the
+  limit is checked as the split is built — checking afterwards would mean
+  allocating the whole doubled set first, which is the thing being avoided.
 
 Because both backends are exact for unitaries and both implement the same
 channels, they check each other: the tests assert that trajectory sampling
