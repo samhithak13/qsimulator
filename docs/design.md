@@ -138,6 +138,8 @@ cross-validation, parser fuzzing, `cargo audit`, and a coverage floor.
   `gate` bodies need arithmetic over their formal parameters.
 - `src/noise.rs` — the standard single-qubit channels as Kraus operators, and
   the trace-preservation check that rejects a non-physical one.
+- `src/pauli.rs` — Pauli strings, and the flip mask and coefficient that make
+  an expectation value one pass.
 - `src/density.rs` — the density-matrix backend: conjugation, exact channels,
   projection, and the pieces `run_density` composes into a classical mixture.
 - `src/rng.rs` — the seedable RNG.
@@ -353,6 +355,28 @@ physical qubits, timing — are reported by name rather than ignored. `else` is
 worth noting: a statement ends at its closing brace, so an `else` clause
 arrives as a statement of its own rather than as part of the `if`, and is
 caught there.
+
+## Expectation values
+
+Sampling answers "what outcomes come up"; `<P>` answers "what is this
+observable worth", which is what a variational algorithm optimizes. Estimating
+`<Z_0 Z_1>` from shots converges as `1/sqrt(shots)`; reading it off the state
+is exact and costs one pass.
+
+The pass is one pass because a Pauli string maps each basis state to a single
+other one: `P|j> = c|j ^ flip>`, where `flip` collects the qubits carrying X or
+Y, and `c` is `-1` per set Z qubit and `±i` per Y qubit depending on that
+qubit's bit. So `<psi|P|psi>` is a sum over amplitude pairs rather than a
+matrix product, and `Tr(P rho)` is a sum over `rho[j ^ flip][j]`.
+
+Both backends implement it, and the density one matters most: `<Z>` decaying
+under amplitude damping is exactly what a decoherence study wants, and a state
+vector cannot represent the mixed state it decays through.
+
+The fast path is checked against an explicit `2^n x 2^n` matrix product over
+every Pauli string on up to three qubits — a different algorithm, so it catches
+a wrong flip mask or a Y phase with its sign or qubit-parity backwards, which
+spot checks on a few states would not.
 
 ## Roadmap
 

@@ -226,6 +226,36 @@ impl State {
         self.amps.iter().map(|c| c.norm_sqr()).sum()
     }
 
+    /// Expectation `<psi|P|psi>` of a Pauli string.
+    ///
+    /// Exact and in one pass: a Pauli string maps each basis state to a single
+    /// other one, `P|j> = c|j ^ flip>`, so the sum is over amplitudes rather
+    /// than over a matrix. Estimating the same number by sampling would cost
+    /// shots and converge as `1/sqrt(shots)`.
+    ///
+    /// The result is real because a Pauli string is Hermitian; any imaginary
+    /// part is rounding and is discarded.
+    ///
+    /// # Panics
+    ///
+    /// If the string names a qubit outside the register.
+    pub fn expectation(&self, pauli: &crate::pauli::PauliString) -> f64 {
+        if let Some(max) = pauli.max_qubit() {
+            assert!(
+                max < self.n_qubits,
+                "Pauli string names qubit {max}, outside a {}-qubit register",
+                self.n_qubits
+            );
+        }
+        let flip = pauli.flip_mask();
+        let mut total = Complex64::new(0.0, 0.0);
+        for (i, amp) in self.amps.iter().enumerate() {
+            let source = i ^ flip;
+            total += amp.conj() * pauli.coefficient(source) * self.amps[source];
+        }
+        total.re
+    }
+
     /// Expectation `<psi|M|psi>` of a single-qubit Hermitian `m` on qubit `q`.
     ///
     /// One read-only pass over the amplitudes, so a Kraus branch probability

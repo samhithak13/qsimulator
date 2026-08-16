@@ -124,6 +124,36 @@ impl DensityMatrix {
             .sum()
     }
 
+    /// Expectation `Tr(P rho)` of a Pauli string.
+    ///
+    /// Exact and in one pass over the diagonal-shifted entries, for the same
+    /// reason as the state-vector version: `P` sends each basis state to a
+    /// single other one, so `Tr(P rho)` is a sum over `rho[j ^ flip][j]` rather
+    /// than a matrix product.
+    ///
+    /// Unlike the state vector this works on a mixed state, which is the point
+    /// — `<Z>` under noise is exactly what a decoherence study wants.
+    ///
+    /// # Panics
+    ///
+    /// If the string names a qubit outside the register.
+    pub fn expectation(&self, pauli: &crate::pauli::PauliString) -> f64 {
+        if let Some(max) = pauli.max_qubit() {
+            assert!(
+                max < self.n_qubits,
+                "Pauli string names qubit {max}, outside a {}-qubit register",
+                self.n_qubits
+            );
+        }
+        let flip = pauli.flip_mask();
+        let mut total = Complex64::new(0.0, 0.0);
+        for col in 0..self.dim {
+            let row = col ^ flip;
+            total += pauli.coefficient(row) * self.entries[row * self.dim + col];
+        }
+        total.re
+    }
+
     /// Apply a single-qubit unitary: `rho -> U rho U^dagger`.
     pub fn apply_1q(&mut self, gate: &[[Complex64; 2]; 2], target: usize) {
         assert!(target < self.n_qubits, "target qubit out of range");

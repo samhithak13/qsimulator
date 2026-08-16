@@ -159,6 +159,25 @@ qsimulator --shots 1000 --seed 42 programs/bell.qasm
 `--shots` overrides the program's own `sample` directive; `--seed` on its own
 re-seeds it. Sampling is a pure function of the seed, so a run repeats exactly.
 
+## Expectation values
+
+Sampling gives a histogram; an expectation value gives `<P>` exactly, which is
+what a variational algorithm needs and what no number of shots gives you for
+free.
+
+```rust
+use qsimulator::{Circuit, Pauli, PauliString};
+
+let mut c = Circuit::new(2);
+c.h(0).cnot(0, 1); // a Bell pair
+
+let zz = PauliString::new(&[(0, Pauli::Z), (1, Pauli::Z)]);
+assert!((c.run().expectation(&zz) - 1.0).abs() < 1e-12); // perfectly correlated
+```
+
+It works on the density backend too, where `<Z>` decaying under noise is the
+whole point — a state vector cannot represent the mixed state it decays through.
+
 ## OpenQASM 2.0 and 3
 
 A file ending in `.qasm`, or one starting with an `OPENQASM` header, is parsed

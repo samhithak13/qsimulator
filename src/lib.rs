@@ -19,6 +19,8 @@
 //! - [`density::DensityMatrix`] — the density-matrix backend, for exact noise.
 //! - [`gates`] — unitary matrices for the standard gate set.
 //! - [`noise`] — the standard single-qubit channels, as Kraus operators.
+//! - [`pauli`] — Pauli strings and their expectation values, exact and in one
+//!   pass, for when you want `<Z_0 Z_1>` rather than a histogram.
 //! - [`rng::Rng`] — a seedable RNG, so sampling is reproducible.
 //! - [`program`], [`qasm`] and [`qasm3`] — the text, OpenQASM 2 and OpenQASM 3
 //!   front ends.
@@ -55,6 +57,7 @@ pub mod error;
 mod expr;
 pub mod gates;
 pub mod noise;
+pub mod pauli;
 pub mod program;
 pub mod qasm;
 pub mod qasm3;
@@ -63,5 +66,6 @@ pub mod state;
 
 pub use circuit::{Circuit, DensityError, ExportError};
 pub use error::ParseError;
+pub use pauli::{Pauli, PauliString};
 pub use rng::Rng;
 pub use state::State;

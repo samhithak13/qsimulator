@@ -6,6 +6,16 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- Pauli expectation values: `pauli::PauliString`, `State::expectation` and
+  `DensityMatrix::expectation`. Sampling estimates `<Z_0 Z_1>` at
+  `1/sqrt(shots)`; this reads it off the state exactly in one pass, since a
+  Pauli string maps each basis state to a single other one. The density
+  backend matters most here — `<Z>` decaying under noise is what a decoherence
+  study wants, and a state vector cannot hold the mixed state it decays
+  through. Checked against an explicit matrix product over every Pauli string
+  on up to three qubits, and against Qiskit for all 64 on three.
+
 ## [0.7.0] - 2026-08-15
 
 OpenQASM 3 on the way in, and the density backend finishes the job it started:
