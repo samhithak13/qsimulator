@@ -113,11 +113,17 @@ Implemented and covered by tests:
   including `cnot`, `cz`, `crz`, `cp`, `cu3`, `swap`, `toffoli`, and the
   general `cu`/`mcx`/`mcu`; execution; ASCII diagrams; OpenQASM export at any
   control width.
-- **Front ends** — a text program parser (`program`), an OpenQASM 2.0
-  importer (`qasm`) covering `gate` declarations and all of `qelib1`, and a
-  CLI (`main`).
+- **Expectation values** (`pauli`) — `PauliString`, with `State::expectation`
+  and `DensityMatrix::expectation`; exact and in one pass, on pure and mixed
+  states alike.
+- **Density matrix** (`density::DensityMatrix`) — the second backend: exact
+  channels, measurement, reset and (via `Circuit::run_density`) classical
+  feed-forward, to 12 qubits.
+- **Front ends** — a text program parser (`program`), an OpenQASM 2 importer
+  (`qasm`) covering `gate` declarations and all of `qelib1`, an OpenQASM 3
+  front end (`qasm3`) normalizing onto it, and a CLI (`main`).
 
-Over 190 unit and integration tests at ~97% line coverage; CI runs fmt,
+Over 240 unit and integration tests at ~97% line coverage; CI runs fmt,
 clippy (`-D warnings`), a warning-clean `cargo doc`, build, test, the Qiskit
 cross-validation, parser fuzzing, `cargo audit`, and a coverage floor.
 
@@ -390,6 +396,33 @@ exactness — and both handle the full instruction set including feed-forward.
 OpenQASM 3 is read for the subset that maps onto OpenQASM 2; the rest of that
 language (loops, subroutines, classical arithmetic, timing) would need a real
 classical execution model rather than a normalizer.
+
+### Where to pick up
+
+In the order I would take them:
+
+1. **Gate-level noise models.** Channels are hand-placed today. A `NoiseModel`
+   applied at run time — "depolarize after every two-qubit gate at rate p" —
+   is how noise is actually used, and needs no new physics, only a way to
+   attach channels to gate kinds as a circuit executes.
+2. **Then stop adding surface.** Three of the last four releases were breaking
+   (`ExportError` twice, `DensityError` once) and the public API is past a
+   hundred functions. One deliberately additive-only release, then 1.0, is
+   worth more to a published crate than another feature.
+
+Further out, and only if something asks for them: two-qubit correlated noise
+channels, and partial trace / reduced density matrices.
+
+### Conventions worth not relearning
+
+- Every result is cross-validated against Qiskit on each CI run
+  (`crossval/compare.py`, six phases). Adding a feature means adding or
+  extending a phase — and **checking the phase fails when the bug is present**.
+  Two phases in this codebase originally passed with the bug they existed to
+  catch still in place.
+- A trailing measurement is readout and is not applied by `run`; a trailing
+  *reset* or noise channel is. See the Measurement section.
+- `depolarizing(p)` is maximally mixing at `p = 3/4`, not `p = 1`.
 
 ### Not planned: a SIMD fast path
 
