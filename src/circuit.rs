@@ -691,10 +691,14 @@ impl Circuit {
     /// Whether the circuit contains a reset or a noise channel. Both always
     /// branch — even as the final operation, since both change the state that
     /// is sampled.
+    ///
+    /// This looks inside a conditional block, because a channel is allowed in
+    /// one (a reset is not). A scan of the top level alone would miss it, and
+    /// `sample` would then take the run-once path and measure clones of a
+    /// single sampled trajectory — reporting one Kraus branch as if it were
+    /// the whole distribution.
     fn has_reset(&self) -> bool {
-        self.ops
-            .iter()
-            .any(|op| matches!(op, Op::Reset { .. } | Op::Kraus { .. }))
+        self.ops.iter().any(Op::branches)
     }
 
     /// How many of the final operations are measurements — the circuit's
@@ -776,6 +780,20 @@ impl Op {
                 Some(*qubit)
             }
             Op::Conditional { .. } => None,
+        }
+    }
+
+    /// Whether this operation makes the state it leaves behind stochastic.
+    ///
+    /// A reset and a noise channel both do, and a conditional does whenever
+    /// the block it guards holds one. Nesting only ever goes one level deep —
+    /// `if_classical_eq` rejects a nested conditional — but recursing costs
+    /// nothing and does not depend on that staying true.
+    fn branches(&self) -> bool {
+        match self {
+            Op::Reset { .. } | Op::Kraus { .. } => true,
+            Op::Conditional { ops, .. } => ops.iter().any(Op::branches),
+            _ => false,
         }
     }
 }

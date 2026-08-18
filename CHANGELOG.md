@@ -16,6 +16,18 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   through. Checked against an explicit matrix product over every Pauli string
   on up to three qubits, and against Qiskit for all 64 on three.
 
+### Fixed
+- A noise channel inside a conditional block was sampled once and reused for
+  every shot. `sample` decides whether a circuit needs re-running per shot by
+  looking for an operation that branches, but the scan only covered top-level
+  operations — and while a conditional block may not hold a measurement or a
+  reset, it may hold a channel. Nested there, the channel was invisible: the
+  circuit was judged deterministic, run once, and every shot measured a clone
+  of the one trajectory that produced. `if (c == 0) { bit_flip(0.5, q0) }` on
+  a fresh register reported |0> with certainty where the truth is a coin flip,
+  and the density backend — which was correct throughout — disagreed with the
+  state-vector one. The scan now recurses into conditional blocks.
+
 ## [0.7.0] - 2026-08-15
 
 OpenQASM 3 on the way in, and the density backend finishes the job it started:

@@ -122,3 +122,32 @@ fn non_physical_channel_is_rejected() {
     ops.truncate(2);
     Circuit::new(1).channel(ops, 0);
 }
+
+/// A channel inside a conditional block still resamples per shot.
+///
+/// `if_classical_eq` admits a channel, so one can sit nested where a scan of
+/// the top-level operations does not see it. When that happened, `sample`
+/// judged the circuit deterministic, ran it once and measured clones of the
+/// single trajectory it got — reporting one Kraus branch with certainty.
+/// Nothing here is measured before the guard, so every classical bit reads 0
+/// and the block always fires: this is the unguarded channel in disguise, and
+/// the two must agree.
+#[test]
+fn a_channel_inside_a_conditional_resamples() {
+    let mut guarded = Circuit::new(1);
+    guarded.if_classical_eq(0, |b| {
+        b.bit_flip(0.5, 0);
+    });
+    let nested = fraction_one(&guarded, 0, 20_000, 7);
+    assert!((nested - 0.5).abs() < 0.02, "guarded channel gave {nested}");
+
+    // The same channel written at the top level, as the oracle.
+    let mut plain = Circuit::new(1);
+    plain.bit_flip(0.5, 0);
+    let flat = fraction_one(&plain, 0, 20_000, 7);
+    assert!((nested - flat).abs() < 0.03, "{nested} vs {flat}");
+
+    // And the exact backend, which was right the whole time.
+    let rho = guarded.run_density().expect("density run");
+    assert!((rho.probability(1) - 0.5).abs() < 1e-12);
+}
