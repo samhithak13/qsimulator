@@ -1,6 +1,6 @@
 [package]
 name = "qsimulator"
-version = "0.7.0"
+version = "0.8.0"
 edition = "2021"
 rust-version = "1.80"
 description = "A quantum circuit simulator with noise, density matrices, and OpenQASM 2 and 3 support"
